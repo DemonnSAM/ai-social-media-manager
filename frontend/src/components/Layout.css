@@ -1,0 +1,24 @@
+.layout {
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+}
+
+.layout__main {
+  flex: 1;
+  margin-left: 64px; /* collapsed sidebar width */
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  transition: margin-left 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.layout--sidebar-expanded .layout__main {
+  margin-left: 220px; /* expanded sidebar width */
+}
+
+.layout__content {
+  flex: 1;
+  padding: 24px 28px;
+  overflow-y: auto;
+}
