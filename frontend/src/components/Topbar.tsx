@@ -1,5 +1,6 @@
 import { useLocation } from 'react-router-dom';
 import { Search, Plus, Bell, ChevronDown, Zap, Camera, X, Briefcase, Upload, ChevronRight } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 import './Topbar.css';
 
 interface TopbarProps {
@@ -9,6 +10,15 @@ interface TopbarProps {
 export default function Topbar({ actions }: TopbarProps) {
   const location = useLocation();
   const path = location.pathname;
+  const { user } = useAuth();
+
+  const displayName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User';
+  const initials = displayName
+    .split(' ')
+    .map((n: string) => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
 
   // 1. Dashboard Topbar
   if (path === '/') {
@@ -149,10 +159,10 @@ export default function Topbar({ actions }: TopbarProps) {
           
           <div className="topbar__profile" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div className="topbar__profile-info" style={{ textAlign: 'right' }}>
-              <span className="sidebar__profile-name" style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#f8fafc' }}>Alex Rivera</span>
+              <span className="sidebar__profile-name" style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#f8fafc' }}>{displayName}</span>
               <span className="sidebar__profile-plan" style={{ display: 'block', fontSize: '11px', color: '#64748b' }}>Admin</span>
             </div>
-            <img src="https://ui-avatars.com/api/?name=AR&background=fdf4e3&color=000" alt="Profile" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
+            <img src={`https://ui-avatars.com/api/?name=${encodeURIComponent(initials)}&background=fdf4e3&color=000`} alt="Profile" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
           </div>
         </div>
       </header>

@@ -18,6 +18,8 @@ import {
   ArrowUpCircle,
   X
 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { signOut } from '../lib/auth';
 import './Sidebar.css';
 
 interface NavItem {
@@ -52,6 +54,22 @@ export default function Sidebar({ onOpenSettings }: SidebarProps) {
   const sidebarRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
   const navigate = useNavigate();
+  const { user } = useAuth();
+
+  // Derive display name and email from auth user
+  const displayName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User';
+  const displayEmail = user?.email || '';
+  const initials = displayName
+    .split(' ')
+    .map((n: string) => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
+
+  const handleLogout = async () => {
+    await signOut();
+    navigate('/auth');
+  };
 
   const expanded = isHovered || userMenuOpen;
 
@@ -130,12 +148,12 @@ export default function Sidebar({ onOpenSettings }: SidebarProps) {
         {/* User profile */}
         <div className="sidebar__profile" onClick={() => setUserMenuOpen(!userMenuOpen)}>
           <div className="sidebar__avatar-wrap">
-            <span style={{ fontWeight: 700 }}>AR</span>
+            <span style={{ fontWeight: 700 }}>{initials}</span>
           </div>
           {expanded && (
             <div className="sidebar__profile-info">
-              <span className="sidebar__profile-name">Alex Rivera</span>
-              <span className="sidebar__profile-plan">@gamegpriyanshu17</span>
+              <span className="sidebar__profile-name">{displayName}</span>
+              <span className="sidebar__profile-plan">{displayEmail}</span>
             </div>
           )}
           
@@ -143,11 +161,11 @@ export default function Sidebar({ onOpenSettings }: SidebarProps) {
             <div className="user-menu" onClick={(e) => e.stopPropagation()}>
               <div className="user-menu__header">
                 <div className="sidebar__avatar-wrap" style={{ width: 40, height: 40, fontSize: 14 }}>
-                  <span style={{ fontWeight: 700 }}>AR</span>
+                  <span style={{ fontWeight: 700 }}>{initials}</span>
                 </div>
                 <div className="sidebar__profile-info">
-                  <span className="sidebar__profile-name" style={{ fontSize: 15 }}>Alex Rivera</span>
-                  <span className="sidebar__profile-plan">@gamegpriyanshu17</span>
+                  <span className="sidebar__profile-name" style={{ fontSize: 15 }}>{displayName}</span>
+                  <span className="sidebar__profile-plan">{displayEmail}</span>
                 </div>
               </div>
               
@@ -182,7 +200,7 @@ export default function Sidebar({ onOpenSettings }: SidebarProps) {
                   </div>
                   <ChevronRight size={14} />
                 </div>
-                <div className="user-menu__item">
+                <div className="user-menu__item" onClick={handleLogout}>
                   <LogOut size={18} />
                   <span>Log out</span>
                 </div>

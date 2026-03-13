@@ -19,6 +19,7 @@ import {
   LogOut,
   Edit2
 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 import './SettingsModal.css';
 
 interface SettingsModalProps {
@@ -28,10 +29,21 @@ interface SettingsModalProps {
 
 export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [activeSection, setActiveSection] = useState('profile');
+  const { user } = useAuth();
   
+  // Derive display values from auth user
+  const authName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User';
+  const authEmail = user?.email || '';
+  const initials = authName
+    .split(' ')
+    .map((n: string) => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
+
   // State for form fields
-  const [fullName, setFullName] = useState('Alex Rivera');
-  const [email, setEmail] = useState('alex.rivera@socialai.io');
+  const [fullName, setFullName] = useState(authName);
+  const [email, setEmail] = useState(authEmail);
   const [bio, setBio] = useState('Digital strategist and coffee enthusiast. Managing social growth for tech startups.');
   const [tfaEnabled, setTfaEnabled] = useState(true);
   const [threatDetection, setThreatDetection] = useState(true);
@@ -51,7 +63,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             <div className="profile-card">
               <div className="avatar-upload">
                 <div className="avatar-preview-container">
-                  <div className="avatar-preview-big">AR</div>
+                  <div className="avatar-preview-big">{initials}</div>
                   <div className="avatar-edit-btn">
                     <Edit2 size={14} />
                   </div>
