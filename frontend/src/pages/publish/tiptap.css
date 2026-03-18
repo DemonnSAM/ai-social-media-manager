@@ -1,0 +1,46 @@
+.editor__textarea .ProseMirror {
+  outline: none;
+  min-height: 100%;
+  height: 100%;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.editor__textarea .ProseMirror p.is-editor-empty:first-child::before {
+  content: "What's happening?";
+  float: left;
+  color: #475569;
+  font-size: 18px;
+  pointer-events: none;
+  height: 0;
+}
+
+.mention-node {
+  color: #06b6d4;
+  background-color: rgba(6, 182, 212, 0.1);
+  border-radius: 4px;
+  padding: 0 4px;
+  font-weight: 500;
+}
+
+.hashtag-node {
+  color: #8b5cf6;
+  background-color: rgba(139, 92, 246, 0.1);
+  border-radius: 4px;
+  padding: 0 4px;
+  font-weight: 500;
+}
+
+.editor__tool-btn.is-active {
+  background: rgba(255, 255, 255, 0.2);
+  color: var(--text-primary);
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.preview-html-container p:first-of-type {
+  display: inline;
+}
+
+.preview-html-container p {
+  margin: 0;
+}

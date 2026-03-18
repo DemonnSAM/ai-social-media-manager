@@ -1,6 +1,5 @@
 import { useLocation } from 'react-router-dom';
-import { Search, Plus, Bell, ChevronDown, Zap, Camera, X, Briefcase, Upload, ChevronRight } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
+import { Search, Plus, Bell, ChevronDown, Zap, Camera, X, Briefcase, Upload } from 'lucide-react';
 import './Topbar.css';
 
 interface TopbarProps {
@@ -10,15 +9,9 @@ interface TopbarProps {
 export default function Topbar({ actions }: TopbarProps) {
   const location = useLocation();
   const path = location.pathname;
-  const { user } = useAuth();
 
-  const displayName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User';
-  const initials = displayName
-    .split(' ')
-    .map((n: string) => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2);
+  const displayName = 'Workspace';
+  const initials = 'WS';
 
   // 1. Dashboard Topbar
   if (path === '/') {
@@ -104,16 +97,7 @@ export default function Topbar({ actions }: TopbarProps) {
         </div>
 
         <div className="topbar__actions">
-          {actions ? actions : (
-            <>
-              <button className="btn-outline-ghost">Save Draft</button>
-              <div className="btn-group">
-                <button className="btn-cyan-split">Schedule Post</button>
-                <button className="btn-cyan-split-icon"><ChevronDown size={14} color="#0f1724" /></button>
-              </div>
-              <button className="btn-ghost-filled">Publish Now</button>
-            </>
-          )}
+          {actions}
         </div>
       </header>
     );

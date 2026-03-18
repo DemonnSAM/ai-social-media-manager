@@ -1,0 +1,276 @@
+/* ── Onboarding Modal Overlay ── */
+.onboarding-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(4, 6, 15, 0.75);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  animation: fadeIn 0.2s ease-out forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ── Modal Container ── */
+.onboarding-modal {
+  width: 90%;
+  max-width: 600px;
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+  transform: translateY(10px);
+  animation: slideUpFade 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  display: flex;
+  flex-direction: column;
+}
+
+@keyframes slideUpFade {
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* ── Beta Banner ── */
+.onboarding-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(14, 165, 233, 0.1);
+  color: #38bdf8;
+  padding: 12px 24px;
+  font-size: 0.85rem;
+  border-bottom: 1px solid #1e293b;
+}
+
+.onboarding-banner strong {
+  color: #7dd3fc;
+  font-weight: 600;
+  margin-right: 4px;
+}
+
+/* ── Header ── */
+.onboarding-header {
+  padding: 32px 32px 16px 32px;
+  text-align: center;
+}
+
+.onboarding-title {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #f8fafc;
+  margin: 0 0 12px 0;
+  letter-spacing: -0.01em;
+}
+
+.onboarding-subtitle {
+  font-size: 0.95rem;
+  color: #94a3b8;
+  line-height: 1.5;
+  margin: 0;
+  max-width: 460px;
+  margin: 0 auto;
+}
+
+/* ── Body ── */
+.onboarding-body {
+  padding: 16px 32px 32px 32px;
+}
+
+.connection-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+/* ── Connection Cards ── */
+.connection-card {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 16px;
+  padding: 20px;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  outline: none;
+}
+
+.connection-card:hover:not(:disabled) {
+  background: #273549;
+  border-color: #475569;
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+}
+
+.connection-card:focus-visible {
+  box-shadow: 0 0 0 2px #0ea5e9;
+  border-color: transparent;
+}
+
+.connection-card:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.connection-card__icon-wrap {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.ig-gradient {
+  background: linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%);
+}
+
+.fb-blue {
+  background: #1877f2;
+}
+
+.connection-card__content {
+  flex-grow: 1;
+}
+
+.connection-card__content h3 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #f1f5f9;
+  margin: 0 0 6px 0;
+}
+
+.connection-card__content p {
+  font-size: 0.85rem;
+  color: #94a3b8;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.connection-card__action {
+  color: #64748b;
+  transition: color 0.2s ease, transform 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+}
+
+.connection-card:hover:not(:disabled) .connection-card__action {
+  color: #f8fafc;
+  transform: translateX(4px);
+}
+
+/* ── Helper Text ── */
+.onboarding-helper-text {
+  font-size: 0.8rem;
+  color: #64748b;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 8px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── Footer ── */
+.onboarding-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px 32px;
+  background: rgba(15, 23, 42, 0.5);
+  border-top: 1px solid #1e293b;
+}
+
+.onboarding-link {
+  color: #94a3b8;
+  font-size: 0.85rem;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.onboarding-link:hover {
+  color: #f1f5f9;
+  text-decoration: underline;
+}
+
+.onboarding-skip-btn {
+  background: transparent;
+  color: #f1f5f9;
+  border: 1px solid #334155;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.onboarding-skip-btn:hover {
+  background: #1e293b;
+  border-color: #475569;
+}
+
+/* ── Loading Spinner ── */
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Responsive ── */
+@media (max-width: 640px) {
+  .onboarding-header, .onboarding-body, .onboarding-footer {
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+  
+  .onboarding-footer {
+    flex-direction: column-reverse;
+    gap: 16px;
+    padding-top: 20px;
+    padding-bottom: 20px;
+  }
+  
+  .onboarding-skip-btn {
+    width: 100%;
+  }
+
+  .connection-card {
+    flex-direction: column;
+    text-align: center;
+    gap: 12px;
+    padding: 24px 20px;
+  }
+
+  .connection-card__action {
+    display: none;
+  }
+}

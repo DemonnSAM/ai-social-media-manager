@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import {
   DollarSign,
   TrendingUp,
@@ -5,8 +6,7 @@ import {
   Sparkles,
   ArrowRight,
   AtSign,
-  Hash,
-  MessageSquare,
+  MessageSquare
 } from 'lucide-react';
 import {
   BarChart,
@@ -17,6 +17,9 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
+import { supabase } from '../../lib/supabaseClient';
+import { useAuth } from '../../context/AuthContext';
+import React, { useState, useEffect } from 'react';
 import './Dashboard.css';
 
 /* ── Static data (replace with API later) ── */
@@ -67,38 +70,7 @@ const trendingHashtags = [
   '+4 Trending',
 ];
 
-const upcomingPosts = [
-  {
-    id: 'post-1',
-    icon: <AtSign size={16} />,
-    iconColor: '#2dd4bf',
-    time: 'Today, 4:30 PM',
-    status: 'READY' as const,
-    title: '',
-    description: '"Unlocking the potential of generative AI in modern SaaS architectures..."',
-    hasImage: true,
-  },
-  {
-    id: 'post-2',
-    icon: <MessageSquare size={16} />,
-    iconColor: '#f97316',
-    time: 'Tomorrow, 10:00 AM',
-    status: 'REVIEW' as const,
-    title: 'Company Culture Highlight',
-    description: 'Video: Behind the scenes with our AI engineering team.',
-    hasImage: false,
-  },
-  {
-    id: 'post-3',
-    icon: <Hash size={16} />,
-    iconColor: '#64748b',
-    time: 'Wed, 9:15 AM',
-    status: 'DRAFT' as const,
-    title: '',
-    description: 'Scheduled: Weekly Tech Roundup #Growth2024',
-    hasImage: false,
-  },
-];
+// Removed static upcomingPosts mock data
 
 const chartData = [
   { platform: 'Instagram', current: 75, previous: 50 },
@@ -108,7 +80,77 @@ const chartData = [
 
 /* ── Component ── */
 
+interface DashboardPost {
+  id: string;
+  icon: React.ReactNode;
+  iconColor: string;
+  time: string;
+  status: string;
+  title: string;
+  description: string;
+  hasImage: boolean;
+  imagePreview: string | null;
+}
+
 export default function Dashboard() {
+  const { user } = useAuth();
+  const [recentPosts, setRecentPosts] = useState<DashboardPost[]>([]);
+  const [loadingPosts, setLoadingPosts] = useState(true);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const fetchPosts = async () => {
+      setLoadingPosts(true);
+
+      const { data, error } = await supabase
+        .from('posts')
+        .select('*, media(*)')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      if (!error && data) {
+        const mapped: DashboardPost[] = data.map((post: any) => {
+          let icon = <MessageSquare size={16} />;
+          let iconColor = '#64748b';
+          
+          if (post.status === 'scheduled') {
+            iconColor = '#6366f1';
+          } else if (post.status === 'published') {
+            icon = <AtSign size={16} />;
+            iconColor = '#2dd4bf';
+          } else {
+            iconColor = '#f97316';
+          }
+
+          const displayTime = post.scheduled_at 
+            ? new Date(post.scheduled_at).toLocaleString() 
+            : new Date(post.created_at).toLocaleString();
+
+          const postMedia = post.media && post.media.length > 0 ? post.media[0].url : null;
+
+          return {
+            id: post.id,
+            icon,
+            iconColor,
+            time: displayTime,
+            status: post.status.toUpperCase(),
+            title: '', // No title concept in DB right now
+            description: post.content || (postMedia ? '[Media Only]' : 'Empty Post'),
+            hasImage: !!postMedia,
+            imagePreview: postMedia
+          };
+        });
+        
+        setRecentPosts(mapped);
+      }
+      setLoadingPosts(false);
+    };
+
+    fetchPosts();
+  }, [user]);
+
   return (
     <div className="dashboard" id="dashboard-page">
       {/* ─── Stat Cards ─── */}
@@ -163,51 +205,57 @@ export default function Dashboard() {
             ))}
           </div>
 
-          <a href="#" className="insight-card__link" id="view-ai-analysis">
+          <Link to="/analytics" className="insight-card__link" id="view-ai-analysis">
             View Detailed AI Analysis <ArrowRight size={14} />
-          </a>
+          </Link>
         </div>
 
         {/* Upcoming Posts */}
         <div className="upcoming-card" id="upcoming-posts">
           <div className="upcoming-card__header">
             <h2 className="upcoming-card__title">Upcoming Posts</h2>
-            <a href="#" className="upcoming-card__link">View Calendar</a>
+            <Link to="/calendar" className="upcoming-card__link">View Calendar</Link>
           </div>
 
           <div className="upcoming-card__list">
-            {upcomingPosts.map((post) => (
-              <div className="upcoming-post" key={post.id} id={post.id}>
-                <div className="upcoming-post__top">
-                  <div className="upcoming-post__meta">
-                    <span
-                      className="upcoming-post__icon"
-                      style={{ color: post.iconColor }}
-                    >
-                      {post.icon}
+            {loadingPosts ? (
+               <div style={{ color: '#94a3b8', padding: '1rem', textAlign: 'center' }}>Loading posts...</div>
+            ) : recentPosts.length === 0 ? (
+               <div style={{ color: '#94a3b8', padding: '1rem', textAlign: 'center' }}>No recent posts found.</div>
+            ) : (
+              recentPosts.map((post) => (
+                <div className="upcoming-post" key={post.id} id={post.id}>
+                  <div className="upcoming-post__top">
+                    <div className="upcoming-post__meta">
+                      <span
+                        className="upcoming-post__icon"
+                        style={{ color: post.iconColor }}
+                      >
+                        {post.icon}
+                      </span>
+                      <span className="upcoming-post__time" style={{ fontSize: '11px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px' }} title={post.time}>{post.time}</span>
+                    </div>
+                    <span className={`upcoming-post__status upcoming-post__status--${post.status.toLowerCase()}`}>
+                      {post.status}
                     </span>
-                    <span className="upcoming-post__time">{post.time}</span>
                   </div>
-                  <span className={`upcoming-post__status upcoming-post__status--${post.status.toLowerCase()}`}>
-                    {post.status}
-                  </span>
-                </div>
-                {post.title && (
-                  <p className="upcoming-post__title">{post.title}</p>
-                )}
-                {post.hasImage && (
-                  <div className="upcoming-post__image">
-                    <div className="upcoming-post__image-placeholder" />
-                  </div>
-                )}
-                <p className="upcoming-post__desc">{post.description}</p>
-              </div>
-            ))}
+                  {post.title && (
+                    <p className="upcoming-post__title">{post.title}</p>
+                  )}
+                  {post.hasImage && (
+                    <div className="upcoming-post__image" style={{ marginTop: '8px' }}>
+                      <img src={post.imagePreview || ''} alt="Preview" style={{ width: '100%', height: '100px', objectFit: 'cover', borderRadius: '4px' }} />
+                    </div>
+                  )}
+                  <p className="upcoming-post__desc" style={{ marginTop: '8px' }}>{post.description}</p>
+                 </div>
+              ))
+            )}
           </div>
 
-          <button className="upcoming-card__add" id="schedule-new-content">
+          <Link to="/publish" className="upcoming-card__add" style={{ display: 'block', textAlign: 'center', textDecoration: 'none' }} id="schedule-new-content">
             + Schedule New Content
-          </button>
+          </Link>
         </div>
       </section>
 

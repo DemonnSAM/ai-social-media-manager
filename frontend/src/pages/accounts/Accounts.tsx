@@ -10,7 +10,6 @@ import {
   Facebook,
   AtSign,
   Video,
-  AlertCircle,
   MoreHorizontal
 } from 'lucide-react';
 import './Accounts.css';
@@ -26,34 +25,86 @@ const platformsData = [
   { id: 'tk', name: 'TikTok', accounts: 2, icon: <Video size={24} />, color: 'var(--platform-tk, #000000)', bg: '#000000', border: '2px solid #00f2fe' },
 ];
 
-const connectedProfiles = [
-  {
-    id: 1,
-    handle: '@acme_global',
-    name: '',
-    status: 'ACTIVE',
-    followers: '12.4k followers',
-    platform: 'Instagram',
-    aiScheduling: true,
-    avatar: 'https://ui-avatars.com/api/?name=AG&background=random',
-  },
-  {
-    id: 2,
-    handle: 'Acme Corp Solutions',
-    name: '',
-    status: 'ACTIVE',
-    followers: '3.2k followers',
-    platform: 'LinkedIn',
-    aiScheduling: false,
-    avatar: 'https://ui-avatars.com/api/?name=AC&background=random',
-  }
-];
+import { useEffect } from 'react';
+import { useAuth } from '../../context/AuthContext';
+import { supabase } from '../../lib/supabaseClient';
+
+interface SocialAccount {
+  id: string;
+  platform: string;
+  username: string;
+  profile_picture: string;
+  followers: number;
+}
 
 export default function Accounts() {
-  const [profiles, setProfiles] = useState(connectedProfiles);
+  const [profiles, setProfiles] = useState<SocialAccount[]>([]);
+  const { user } = useAuth();
+  const [connectingPlatform, setConnectingPlatform] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const toggleScheduling = (id: number) => {
-    setProfiles(profiles.map(p => p.id === id ? { ...p, aiScheduling: !p.aiScheduling } : p));
+  useEffect(() => {
+    if (!user) return;
+
+    const loadAccounts = async () => {
+      setLoading(true);
+      
+      // Fetch accounts and their insights
+      const { data, error } = await supabase
+        .from('social_accounts')
+        .select(`
+          id, 
+          platform, 
+          username, 
+          profile_picture,
+          account_insights ( followers )
+        `)
+        .eq('user_id', user.id);
+
+      if (!error && data) {
+        const formatted = data.map((acc: any) => ({
+          id: acc.id,
+          platform: acc.platform,
+          username: acc.username || 'Unknown',
+          profile_picture: acc.profile_picture || `https://ui-avatars.com/api/?name=${acc.username}&background=random`,
+          followers: acc.account_insights?.[0]?.followers || 0
+        }));
+        setProfiles(formatted);
+      }
+      setLoading(false);
+    };
+
+    loadAccounts();
+  }, [user]);
+
+  // Check if a platform is already connected
+  const isConnected = (platformId: string) => {
+    // our db stores them as 'instagram', 'facebook' etc.
+    // the platformData uses 'ig', 'fb' etc.
+    const map: Record<string, string> = { 'ig': 'instagram', 'fb': 'facebook' };
+    const dbName = map[platformId];
+    return profiles.some(p => p.platform === dbName);
+  };
+
+  const toggleScheduling = (_id: string) => {
+     // placeholder for now
+  };
+
+  const handleConnect = (platformId: string) => {
+    if (!user) {
+      alert("You must be logged in to connect accounts.");
+      return;
+    }
+
+    if (platformId === 'ig') {
+      setConnectingPlatform('ig');
+      window.location.href = `http://localhost:5000/api/auth/meta?user_id=${user.id}&platform=instagram`;
+    } else if (platformId === 'fb') {
+      setConnectingPlatform('fb');
+      window.location.href = `http://localhost:5000/api/auth/meta?user_id=${user.id}&platform=facebook`;
+    } else {
+      alert(`${platformId.toUpperCase()} integration coming soon!`);
+    }
   };
 
   return (
@@ -103,18 +154,32 @@ export default function Accounts() {
               Platform Connections
             </h2>
             <div className="platforms__grid">
-              {platformsData.map((plat) => (
-                <div className="platform-card" key={plat.id}>
-                  <div className="platform-card__icon-wrap" style={{ background: plat.bg, border: plat.border || 'none' }}>
-                    {plat.icon}
+              {platformsData.map((plat) => {
+                const connected = isConnected(plat.id);
+                return (
+                  <div className={`platform-card ${connected ? 'platform-card--connected' : ''}`} key={plat.id}>
+                    <div className="platform-card__icon-wrap" style={{ background: plat.bg, border: plat.border || 'none' }}>
+                      {plat.icon}
+                    </div>
+                    <h3 className="platform-card__name">{plat.name}</h3>
+                    <p className="platform-card__count">{plat.id === 'ig' || plat.id === 'fb' ? (connected ? '1 Account' : '0 Accounts') : plat.accounts + ' Accounts'}</p>
+                    
+                    {connected ? (
+                      <div className="platform-card__connected-badge">
+                        <CheckCircle2 size={14} /> Connected
+                      </div>
+                    ) : (
+                      <button 
+                        className="platform-card__btn"
+                        onClick={() => handleConnect(plat.id)}
+                        disabled={connectingPlatform === plat.id}
+                      >
+                        {connectingPlatform === plat.id ? 'Connecting...' : 'Connect'}
+                      </button>
+                    )}
                   </div>
-                  <h3 className="platform-card__name">{plat.name}</h3>
-                  <p className="platform-card__count">{plat.accounts} {plat.accounts === 1 ? 'Account' : 'Accounts'}</p>
-                  <button className={`platform-card__btn ${plat.accounts === 0 ? 'platform-card__btn--highlight' : ''}`}>
-                    Connect
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
@@ -125,31 +190,39 @@ export default function Accounts() {
               Connected Profiles
             </h2>
             <div className="profiles__list">
-              {profiles.map((profile) => (
-                <div className="profile-row" key={profile.id}>
-                  <img src={profile.avatar} alt={profile.handle} className="profile-row__avatar" />
-                  <div className="profile-row__info">
-                    <div className="profile-row__name-line">
-                      <span className="profile-row__handle">{profile.handle}</span>
-                      <span className="profile-row__badge">{profile.status}</span>
-                    </div>
-                    <div className="profile-row__meta">
-                      <span className="profile-row__followers"><Zap size={12} /> {profile.followers}</span>
-                      <span className="profile-row__platform"><Instagram size={12} /> {profile.platform}</span>
-                    </div>
-                  </div>
-                  <div className="profile-row__actions">
-                    <span className="profile-row__toggle-label">AI SCHEDULING</span>
-                    <div
-                      className={`toggle-switch ${profile.aiScheduling ? 'toggle-switch--on' : ''}`}
-                      onClick={() => toggleScheduling(profile.id)}
-                    >
-                      <div className="toggle-switch__thumb" />
-                    </div>
-                    <button className="profile-row__more"><MoreHorizontal size={16} /></button>
-                  </div>
+              {loading ? (
+                <div style={{ padding: '20px', color: '#94a3b8', textAlign: 'center' }}>Loading accounts...</div>
+              ) : profiles.length === 0 ? (
+                <div style={{ padding: '20px', color: '#94a3b8', textAlign: 'center', background: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-color)' }}>
+                  No accounts connected yet. Connect one above.
                 </div>
-              ))}
+              ) : (
+                profiles.map((profile) => (
+                  <div className="profile-row" key={profile.id}>
+                    <img src={profile.profile_picture} alt={profile.username} className="profile-row__avatar" />
+                    <div className="profile-row__info">
+                      <div className="profile-row__name-line">
+                        <span className="profile-row__handle">@{profile.username}</span>
+                        <span className="profile-row__badge">ACTIVE</span>
+                      </div>
+                      <div className="profile-row__meta">
+                        <span className="profile-row__followers"><Zap size={12} /> {profile.followers.toLocaleString()} followers</span>
+                        <span className="profile-row__platform" style={{ textTransform: 'capitalize' }}><Instagram size={12} /> {profile.platform}</span>
+                      </div>
+                    </div>
+                    <div className="profile-row__actions">
+                      <span className="profile-row__toggle-label">AI SCHEDULING</span>
+                      <div
+                        className="toggle-switch toggle-switch--on"
+                        onClick={() => toggleScheduling(profile.id)}
+                      >
+                        <div className="toggle-switch__thumb" />
+                      </div>
+                      <button className="profile-row__more"><MoreHorizontal size={16} /></button>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>

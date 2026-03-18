@@ -355,7 +355,7 @@ export default function Auth() {
 
                   <div className="auth-switch">
                     Don't have an account?{' '}
-                    <a onClick={() => { setActiveTab('signup'); setError(''); setSuccessMsg('') }}>Start your 14-day free trial</a>
+                    <a onClick={() => { setActiveTab('signup'); setError(''); setSuccessMsg('') }}>Sign Up</a>
                   </div>
 
                   <div className="auth-social-proof">

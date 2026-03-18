@@ -184,14 +184,28 @@
   color: var(--text-primary);
 }
 
-.platform-card__btn--highlight {
+.platform-card:hover .platform-card__btn:not(:disabled) {
   background: var(--accent);
   color: #0f1724;
 }
 
-.platform-card__btn--highlight:hover {
-  background: #06b6d4;
-  color: #0f1724;
+.platform-card--connected {
+  border-color: #2dd4bf;
+  background: rgba(45, 212, 191, 0.05);
+}
+
+.platform-card__connected-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 0;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  background: rgba(45, 212, 191, 0.15);
+  color: #2dd4bf;
 }
 
 /* Connected Profiles */
