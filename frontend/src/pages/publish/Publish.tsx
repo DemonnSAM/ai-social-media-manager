@@ -33,7 +33,7 @@ import {
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
 import { useTopbar } from '../../components/Layout';
-import { ChevronDown } from 'lucide-react';
+import API_URL from '../../config/api';
 import './Publish.css';
 
 interface SocialAccount {
@@ -95,7 +95,7 @@ export default function Publish() {
     ],
     content: '',
     onUpdate: ({ editor }) => {
-      setContent(editor.getHTML());
+      setContent(editor.getText());
     },
   });
 
@@ -122,9 +122,33 @@ export default function Publish() {
   const [mediaPreviews, setMediaPreviews] = useState<string[]>([]);
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
   const [scheduledAt, setScheduledAt] = useState<string>(''); // ISO string from datetime-local
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
 
   // Submit state
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // AI generation state
+  const [isGeneratingCaption, setIsGeneratingCaption] = useState(false);
+  const [isGeneratingHashtags, setIsGeneratingHashtags] = useState(false);
+
+  // AI quick-actions state
+  const [toneValue, setToneValue] = useState(50);
+  const [isRewriting, setIsRewriting] = useState(false);
+  const [rewritingVariant, setRewritingVariant] = useState<string | null>(null);
+  const [isAdapting, setIsAdapting] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isOptimizing, setIsOptimizing] = useState(false);
+  const [showInsightsPanel, setShowInsightsPanel] = useState(false);
+  const [insightsData, setInsightsData] = useState<{
+    virality_score: number;
+    good: string[];
+    bad: string[];
+    suggestions: string[];
+  } | null>(null);
+  const [selectedPlatformAdapt, setSelectedPlatformAdapt] = useState<'instagram' | 'facebook' | 'twitter'>('instagram');
+  const [additionalContext, setAdditionalContext] = useState('');
+  const [optimizeImprovements, setOptimizeImprovements] = useState<string[]>([]);
+
 
   // Drafts state
   const [isDraftsOpen, setIsDraftsOpen] = useState(false);
@@ -157,8 +181,137 @@ export default function Publish() {
     setIsMuted(!isMuted);
   };
 
+  // AI: call generate-caption endpoint with first media file
+  const callGenerateCaption = async (): Promise<{ caption: string; hashtags: string } | null> => {
+    if (mediaFiles.length === 0) {
+      alert('Please upload an image or video first');
+      return null;
+    }
+    const formData = new FormData();
+    formData.append('media', mediaFiles[0]);
+    try {
+      const response = await fetch(`${API_URL}/api/ai/generate-caption`, {
+        method: 'POST',
+        headers: { 'ngrok-skip-browser-warning': 'true' },
+        body: formData,
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to generate caption');
+      }
+      return await response.json();
+    } catch (err: any) {
+      console.error('[AI] generateCaption error:', err);
+      alert(err.message || 'Failed to generate caption. Please try again.');
+      return null;
+    }
+  };
+
+  // Converts 0–100 slider to a tone label sent to Gemini
+  const getToneLabel = (val: number) => {
+    if (val <= 25) return 'formal';
+    if (val >= 75) return 'casual';
+    return 'balanced';
+  };
+
+  // POST /api/ai/rewrite
+  const callRewrite = async (variant: string): Promise<string | null> => {
+    const caption = editor?.getText() || '';
+    if (!caption.trim()) { alert('Please write a caption first'); return null; }
+    try {
+      const res = await fetch(`${API_URL}/api/ai/rewrite`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+        body: JSON.stringify({ caption, tone: getToneLabel(toneValue), variant }),
+      });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed'); }
+      const data = await res.json();
+      return data.caption;
+    } catch (err: any) {
+      alert(err.message || 'Failed to rewrite caption');
+      return null;
+    }
+  };
+
+  // POST /api/ai/adapt
+  const callAdapt = async (): Promise<string | null> => {
+    const caption = editor?.getText() || '';
+    if (!caption.trim()) { alert('Please write a caption first'); return null; }
+    try {
+      const res = await fetch(`${API_URL}/api/ai/adapt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+        body: JSON.stringify({ caption, platform: selectedPlatformAdapt }),
+      });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed'); }
+      const data = await res.json();
+      return data.caption;
+    } catch (err: any) {
+      alert(err.message || 'Failed to adapt caption');
+      return null;
+    }
+  };
+
+  // POST /api/ai/analyze
+  const callAnalyze = async () => {
+    const caption = editor?.getText() || '';
+    if (!caption.trim()) { alert('Please write a caption first'); return; }
+    setIsAnalyzing(true);
+    try {
+      const res = await fetch(`${API_URL}/api/ai/analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+        body: JSON.stringify({ caption, hashtags: postHashtags }),
+      });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed'); }
+      const data = await res.json();
+      setInsightsData(data);
+      setShowInsightsPanel(true);
+    } catch (err: any) {
+      alert(err.message || 'Failed to analyze post');
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  // POST /api/ai/optimize
+  const callOptimize = async () => {
+    const caption = editor?.getText() || '';
+    if (!caption.trim()) { alert('Please write a caption first'); return; }
+    setIsOptimizing(true);
+    try {
+      const res = await fetch(`${API_URL}/api/ai/optimize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+        body: JSON.stringify({ caption, hashtags: postHashtags, context: additionalContext, platform: selectedPlatformAdapt }),
+      });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed'); }
+      const data = await res.json();
+      editor?.commands.setContent(data.caption);
+      setContent(data.caption);
+      setPostHashtags(data.hashtags);
+      setOptimizeImprovements(data.improvements || []);
+
+      // Update virality score and pointers if provided
+      if (data.virality_score !== undefined) {
+        setInsightsData(prev => ({
+          ...prev,
+          virality_score: data.virality_score,
+          good: data.good || [],
+          bad: data.bad || [],
+          suggestions: data.suggestions || []
+        }));
+      }
+    } catch (err: any) {
+      alert(err.message || 'Failed to optimize content');
+    } finally {
+      setIsOptimizing(false);
+    }
+  };
+
   // Fetch drafts
   const fetchDrafts = useCallback(async () => {
+
     if (!user) return;
     setLoadingDrafts(true);
     try {
@@ -199,8 +352,9 @@ export default function Publish() {
     if (!window.confirm("Are you sure you want to delete this draft?")) return;
 
     try {
-      const response = await fetch(`http://localhost:5000/api/posts/${draftId}`, {
+      const response = await fetch(`${API_URL}/api/posts/${draftId}`, {
         method: 'DELETE',
+        headers: { 'ngrok-skip-browser-warning': 'true' },
       });
       if (!response.ok) {
         throw new Error('Failed to delete draft');
@@ -262,7 +416,9 @@ export default function Publish() {
         .select('id, platform, username, profile_picture')
         .eq('user_id', user.id);
 
-      if (!error && data) {
+      if (error) {
+        console.error('[Publish] Failed to fetch social accounts:', error.message, error);
+      } else if (data) {
         // Default: select all connected accounts
         setPlatforms((data as SocialAccount[]).map((account: SocialAccount) => ({ ...account, selected: true })));
       }
@@ -271,6 +427,11 @@ export default function Publish() {
 
     fetchAccounts();
   }, [user]);
+
+  const handleConnectAccount = (platform: 'instagram' | 'facebook') => {
+    if (!user) return;
+    window.location.href = `${API_URL}/api/auth/meta?user_id=${user.id}&platform=${platform}`;
+  };
 
   const togglePlatform = (id: string) => {
     setPlatforms(platforms.map(p =>
@@ -296,8 +457,8 @@ export default function Publish() {
       alert('Please select at least one social account');
       return;
     }
-    if (!content && mediaFiles.length === 0) {
-      alert('Please add some text or media.');
+    if (!content) {
+      alert('Please add some text to your post.');
       return;
     }
 
@@ -306,7 +467,11 @@ export default function Publish() {
     try {
       const formData = new FormData();
       formData.append('user_id', user.id);
-      formData.append('content', getPreviewHtml());
+      const plainText = editor ? editor.getText() : content
+      const hashtagText = postHashtags.trim()
+        ? '\n\n' + postHashtags.split(/\s+/).map(t => t.startsWith('#') ? t : '#' + t).join(' ')
+        : ''
+      formData.append('content', plainText + hashtagText)
       formData.append('status', status);
 
       const accountIds = selectedAccounts.map(p => p.id);
@@ -318,6 +483,14 @@ export default function Publish() {
           setIsSubmitting(false);
           return;
         }
+
+        const selectedTime = new Date(scheduledAt).getTime();
+        if (selectedTime < Date.now()) {
+          alert("Schedule time must be in the future.");
+          setIsSubmitting(false);
+          return;
+        }
+
         formData.append('scheduled_at', new Date(scheduledAt).toISOString());
       }
 
@@ -327,8 +500,9 @@ export default function Publish() {
         });
       }
 
-      const response = await fetch('http://localhost:5000/api/posts', {
+      const response = await fetch(`${API_URL}/api/posts`, {
         method: 'POST',
+        headers: { 'ngrok-skip-browser-warning': 'true' },
         body: formData,
       });
 
@@ -345,15 +519,29 @@ export default function Publish() {
         if (isDraftsOpen) fetchDrafts();
       } else {
         alert(`Post successfully marked as ${status}!`);
-        navigate('/');
       }
+
+      // Clear the compose post so user has a fresh refreshed page
+      editor?.commands.clearContent();
+      setContent('');
+      setPostHashtags('');
+      setMediaFiles([]);
+      setMediaPreviews([]);
+      setCurrentMediaIndex(0);
+      setScheduledAt('');
+      setToneValue(50);
+      setInsightsData(null);
+      setShowInsightsPanel(false);
+      setAdditionalContext('');
+      setOptimizeImprovements([]);
+
     } catch (err: any) {
       console.error(err);
       alert(err.message || 'An error occurred during submission');
     } finally {
       setIsSubmitting(false);
     }
-  }, [user, selectedAccounts, getPreviewHtml, mediaFiles, scheduledAt, navigate]);
+  }, [user, selectedAccounts, getPreviewHtml, mediaFiles, scheduledAt, navigate, editor]);
 
   const publishActions = useMemo(() => (
     <>
@@ -370,16 +558,6 @@ export default function Publish() {
       >
         {isSubmitting ? 'Saving...' : 'Save Draft'}
       </button>
-      <div className="btn-group">
-        <button
-          className="btn-cyan-split"
-          onClick={() => submitPost('scheduled')}
-          disabled={isSubmitting}
-        >
-          Schedule Post
-        </button>
-        <button className="btn-cyan-split-icon"><ChevronDown size={14} color="#0f1724" /></button>
-      </div>
       <button
         className="btn-ghost-filled"
         onClick={() => alert('Live publishing coming soon! Use schedule for now.')}
@@ -394,6 +572,34 @@ export default function Publish() {
     return () => setActions(null);
   }, [publishActions, setActions]);
 
+  const getTimePart24 = () => (scheduledAt && scheduledAt.includes('T')) ? scheduledAt.split('T')[1].substring(0, 5) : '12:00';
+
+  const getHour12 = () => {
+    const hh = parseInt(getTimePart24().split(':')[0]);
+    if (isNaN(hh)) return '12';
+    const h12 = hh % 12 || 12;
+    return h12.toString().padStart(2, '0');
+  };
+
+  const getMinute = () => {
+    const mm = getTimePart24().split(':')[1];
+    return mm || '00';
+  };
+
+  const getAmPm = () => {
+    const hh = parseInt(getTimePart24().split(':')[0]);
+    return (hh >= 12 && hh < 24) ? 'PM' : 'AM';
+  };
+
+  const updateTime = (h12: string, mm: string, ampm: string) => {
+    let h24 = parseInt(h12);
+    if (ampm === 'PM' && h24 !== 12) h24 += 12;
+    if (ampm === 'AM' && h24 === 12) h24 = 0;
+    const time24 = `${h24.toString().padStart(2, '0')}:${mm}`;
+
+    const date = scheduledAt ? scheduledAt.split('T')[0] : new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0];
+    setScheduledAt(`${date}T${time24}`);
+  };
 
   return (
     <div className="publish-page" id="publish-page">
@@ -420,7 +626,21 @@ export default function Publish() {
               ) : platforms.length === 0 ? (
                 <div className="platform-selector__empty">
                   <AlertCircle size={18} color="#f97316" />
-                  <span>No connected accounts. <a onClick={() => navigate('/accounts')} style={{ cursor: 'pointer', color: '#06b6d4', textDecoration: 'underline' }}>Connect one now</a></span>
+                  <span>No connected accounts.</span>
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                    <button
+                      onClick={() => handleConnectAccount('instagram')}
+                      style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'linear-gradient(45deg,#f09433,#bc1888)', color: 'white', border: 'none', borderRadius: '8px', padding: '6px 12px', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }}
+                    >
+                      <Instagram size={14} /> Connect Instagram
+                    </button>
+                    <button
+                      onClick={() => handleConnectAccount('facebook')}
+                      style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#1877f2', color: 'white', border: 'none', borderRadius: '8px', padding: '6px 12px', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }}
+                    >
+                      <Facebook size={14} /> Connect Facebook
+                    </button>
+                  </div>
                 </div>
               ) : (
                 platforms.map(p => (
@@ -446,6 +666,11 @@ export default function Publish() {
                 ))
               )}
             </div>
+            {selectedAccounts.length === 1 && selectedAccounts[0].platform === 'facebook' && mediaFiles.length === 0 && (
+              <div style={{ marginTop: '12px', display: 'inline-flex', alignItems: 'center', background: 'rgba(24, 119, 242, 0.1)', color: '#1877f2', padding: '4px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 600 }}>
+                Text post — Facebook only
+              </div>
+            )}
           </div>
 
           {/* Editor Block */}
@@ -464,7 +689,27 @@ export default function Publish() {
               <button onMouseDown={(e) => e.preventDefault()} className="editor__tool-btn" title="Emoji" onClick={(e) => { e.preventDefault(); setShowEmojiPicker(!showEmojiPicker); }}>😊</button>
               <button onMouseDown={(e) => e.preventDefault()} className="editor__tool-btn" title="Link">🔗</button>
               <div className="editor__toolbar-spacer"></div>
-              <button className="editor__ai-magic-btn"><Zap size={16} color="#06b6d4" /></button>
+              <button
+                className="editor__ai-magic-btn"
+                title="AI: Generate caption from media"
+                disabled={isGeneratingCaption}
+                onClick={async () => {
+                  setIsGeneratingCaption(true);
+                  try {
+                    const result = await callGenerateCaption();
+                    if (result) {
+                      editor?.commands.setContent(result.caption);
+                      setContent(result.caption);
+                    }
+                  } finally {
+                    setIsGeneratingCaption(false);
+                  }
+                }}
+              >
+                {isGeneratingCaption
+                  ? <Loader2 size={16} className="spin" color="#06b6d4" />
+                  : <Zap size={16} color="#06b6d4" />}
+              </button>
             </div>
 
             <div style={{ position: 'relative', flex: 1, display: 'flex', flexDirection: 'column' }}>
@@ -477,10 +722,120 @@ export default function Publish() {
             </div>
           </div>
 
+          {/* AI Quick Actions Block */}
+          <div className="compose-card ai-quick-actions-card">
+            <div className="compose-card__header">
+              <span className="compose-card__label">✨ AI QUICK ACTIONS</span>
+            </div>
+
+            {/* Rewrite variant buttons */}
+            <div className="ai-variants-group">
+              {(['viral', 'professional', 'funny'] as const).map((variant) => (
+                <button
+                  key={variant}
+                  disabled={isRewriting}
+                  className={`ai-variant-btn ${rewritingVariant === variant && isRewriting ? 'ai-variant-btn--active' : ''}`}
+                  onClick={async () => {
+                    setIsRewriting(true);
+                    setRewritingVariant(variant);
+                    try {
+                      const result = await callRewrite(variant);
+                      if (result) { editor?.commands.setContent(result); setContent(result); }
+                    } finally { setIsRewriting(false); setRewritingVariant(null); }
+                  }}
+                >
+                  {isRewriting && rewritingVariant === variant
+                    ? <Loader2 size={13} className="spin" />
+                    : variant === 'viral' ? '🔥' : variant === 'professional' ? '💼' : '😂'}
+                  {variant.charAt(0).toUpperCase() + variant.slice(1)}
+                </button>
+              ))}
+            </div>
+
+            {/* Tone slider */}
+            <div className="ai-tone-slider-container">
+              <div className="ai-tone-header">
+                <span className="ai-tone-label">Tone: Formal ←→ Casual</span>
+                <span className="ai-tone-value">
+                  {getToneLabel(toneValue).charAt(0).toUpperCase() + getToneLabel(toneValue).slice(1)}
+                </span>
+              </div>
+              <input
+                type="range" min={0} max={100} value={toneValue}
+                onChange={(e) => setToneValue(Number(e.target.value))}
+                className="ai-tone-slider"
+              />
+            </div>
+
+            {/* Platform adaptation row */}
+            <div className="ai-adapt-container">
+              <span className="ai-adapt-label">ADAPT FOR PLATFORM</span>
+              <div className="ai-adapt-actions">
+                <div className="ai-platform-toggles">
+                  {(['instagram', 'facebook', 'twitter'] as const).map((plat) => (
+                    <button
+                      key={plat}
+                      onClick={() => setSelectedPlatformAdapt(plat)}
+                      className={`ai-platform-toggle ${selectedPlatformAdapt === plat ? 'ai-platform-toggle--active' : ''}`}
+                    >
+                      {plat === 'instagram' ? '📸 Instagram' : plat === 'facebook' ? '👥 Facebook' : '🐦 Twitter'}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  disabled={isAdapting}
+                  onClick={async () => {
+                    setIsAdapting(true);
+                    try {
+                      const result = await callAdapt();
+                      if (result) { editor?.commands.setContent(result); setContent(result); }
+                    } finally { setIsAdapting(false); }
+                  }}
+                  className="ai-adapt-btn"
+                >
+                  {isAdapting ? <Loader2 size={13} className="spin" /> : <Zap size={13} />}
+                  Adapt
+                </button>
+              </div>
+            </div>
+
+            {/* Analyze Performance button */}
+            <button
+              disabled={isAnalyzing}
+              onClick={callAnalyze}
+              className="ai-analyze-btn"
+            >
+              {isAnalyzing ? <Loader2 size={15} className="spin" /> : <Zap size={15} color="#06b6d4" />}
+              Analyze Performance
+            </button>
+          </div>
+
           {/* Hashtags Block */}
+
           <div className="compose-card hashtag-card" style={{ marginTop: '16px' }}>
             <div className="compose-card__header">
               <span className="compose-card__label">POST HASHTAGS</span>
+              <button
+                className="editor__ai-magic-btn"
+                title="AI: Generate hashtags from media"
+                style={{ marginLeft: 'auto' }}
+                disabled={isGeneratingHashtags}
+                onClick={async () => {
+                  setIsGeneratingHashtags(true);
+                  try {
+                    const result = await callGenerateCaption();
+                    if (result) {
+                      setPostHashtags(result.hashtags);
+                    }
+                  } finally {
+                    setIsGeneratingHashtags(false);
+                  }
+                }}
+              >
+                {isGeneratingHashtags
+                  ? <Loader2 size={16} className="spin" color="#06b6d4" />
+                  : <Zap size={16} color="#06b6d4" />}
+              </button>
             </div>
             <input
               type="text"
@@ -762,7 +1117,7 @@ export default function Publish() {
                       <MoreHorizontal size={16} className="post__more" />
                     </div>
 
-                    <div className="post__caption post__caption--fb" style={{ whiteSpace: 'pre-wrap' }}>
+                    <div className="post__caption post__caption--fb" style={{ whiteSpace: 'pre-wrap', fontSize: mediaPreviews.length === 0 ? '24px' : '15px', padding: mediaPreviews.length === 0 ? '20px 16px' : '0 12px 12px' }}>
                       {content || postHashtags ? (
                         <span dangerouslySetInnerHTML={{ __html: getPreviewHtml() }} className="preview-html-container" />
                       ) : (
@@ -770,7 +1125,7 @@ export default function Publish() {
                       )}
                     </div>
 
-                    {mediaPreviews.length > 0 ? (
+                    {mediaPreviews.length > 0 && (
                       <div className="post__image-placeholder post__image-placeholder--fb" style={{ background: '#f0f2f5', position: 'relative' }}>
                         {mediaFiles[currentMediaIndex]?.type.startsWith('video') ? (
                           <video src={mediaPreviews[currentMediaIndex]} className="post__mock-media" controls={true} />
@@ -794,10 +1149,6 @@ export default function Publish() {
                             )}
                           </>
                         )}
-                      </div>
-                    ) : (
-                      <div className="post__image-placeholder post__image-placeholder--fb">
-                        <div className="post__no-media" style={{ color: '#65676b' }}>Add photos/videos</div>
                       </div>
                     )}
 
@@ -826,18 +1177,88 @@ export default function Publish() {
 
             <div className="insight-panel__score-row">
               <span className="insight-panel__score-label">Virality Prediction</span>
-              <span className="insight-panel__score-value text-cyan">92%</span>
+              <span className="insight-panel__score-value text-cyan">
+                {showInsightsPanel && insightsData ? `${insightsData.virality_score}%` : '—'}
+              </span>
             </div>
 
             <div className="progress-bar">
-              <div className="progress-bar__fill progress-bar__fill--cyan" style={{ width: '92%' }}></div>
+              <div
+                className="progress-bar__fill progress-bar__fill--cyan"
+                style={{ width: showInsightsPanel && insightsData ? `${insightsData.virality_score}%` : '0%', transition: 'width 0.6s ease' }}
+              />
             </div>
 
-            <p className="insight-panel__tip">
-              "Adding a carousel of technical diagrams could increase engagement by 14.5% based on your recent audience behavior."
-            </p>
+            {showInsightsPanel && insightsData ? (
+              <>
+                {/* Good points */}
+                {insightsData.good.length > 0 && (
+                  <div className="ai-insight-section">
+                    <p className="ai-insight-section__title" style={{ color: '#06b6d4' }}>What's working</p>
+                    {insightsData.good.map((pt, i) => (
+                      <p key={i} className="ai-insight-panel__tip" style={{ color: '#86efac' }}>✓ {pt}</p>
+                    ))}
+                  </div>
+                )}
 
-            <button className="btn-outline-full">Optimize Performance</button>
+                {/* Bad points */}
+                {insightsData.bad.length > 0 && (
+                  <div className="ai-insight-section">
+                    <p className="ai-insight-section__title" style={{ color: '#f87171' }}>Areas to improve</p>
+                    {insightsData.bad.map((pt, i) => (
+                      <p key={i} className="ai-insight-panel__tip" style={{ color: '#f87171' }}>✕ {pt}</p>
+                    ))}
+                  </div>
+                )}
+
+                {/* Suggestions */}
+                {insightsData.suggestions.length > 0 && (
+                  <div className="ai-insight-section">
+                    <p className="ai-insight-section__title" style={{ color: '#fbbf24' }}>Suggestions</p>
+                    {insightsData.suggestions.map((s, i) => (
+                      <p key={i} className="ai-insight-panel__tip" style={{ color: '#fbbf24' }}>→ {s}</p>
+                    ))}
+                  </div>
+                )}
+
+                {/* Optimize Content section */}
+                <div className="ai-optimize-section">
+                  <p className="ai-optimize-label">ADD CONTEXT (optional)</p>
+                  <textarea
+                    className="ai-optimize-textarea"
+                    value={additionalContext}
+                    onChange={(e) => setAdditionalContext(e.target.value)}
+                    placeholder="e.g. This is for a product launch targeting Gen Z..."
+                    rows={2}
+                  />
+                  <button
+                    className="btn-outline-full ai-optimize-btn"
+                    disabled={isOptimizing}
+                    onClick={callOptimize}
+                  >
+                    {isOptimizing ? <Loader2 size={15} className="spin" /> : <Zap size={15} color="#06b6d4" />}
+                    Optimize Content
+                  </button>
+                  {optimizeImprovements.length > 0 && (
+                    <div className="ai-improvements-list">
+                      {optimizeImprovements.map((imp, i) => (
+                        <p key={i} className="ai-improvement-item">• {imp}</p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="insight-panel__tip">
+                  Write a caption and click "Analyze Performance" to get AI-powered insights on your post.
+                </p>
+                <button className="btn-outline-full" onClick={callAnalyze} disabled={isAnalyzing}>
+                  {isAnalyzing ? <Loader2 size={15} className="spin" style={{ display: 'inline' }} /> : null}
+                  {isAnalyzing ? ' Analyzing...' : 'Analyze Performance'}
+                </button>
+              </>
+            )}
           </div>
 
         </div>
@@ -845,30 +1266,48 @@ export default function Publish() {
 
       {/* Page-Specific Footer */}
       <div className="publish__footer">
-        <div className="publish__footer-left">
-          <span className="footer__label">SCHEDULE FOR</span>
-          <div className="schedule-input" style={{ width: 'fit-content', padding: '0 12px' }}>
-            <Calendar size={16} color="#06b6d4" style={{ marginRight: '8px' }} />
-            <input
-              type="datetime-local"
-              value={scheduledAt}
-              onChange={(e) => setScheduledAt(e.target.value)}
-              style={{ background: 'transparent', border: 'none', color: '#f8fafc', outline: 'none', fontFamily: 'inherit' }}
-            />
-          </div>
+        <div className="publish__footer-left" style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingLeft: '12px' }}>
+          {scheduledAt ? (
+            <>
+              <Calendar size={16} color="#06b6d4" />
+              <span style={{ fontSize: '14px', color: '#06b6d4', fontWeight: 500 }}>
+                Scheduled: {new Date(scheduledAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+              </span>
+              <button
+                onClick={() => setScheduledAt('')}
+                className="btn-clear-schedule"
+                style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer', marginLeft: '4px', fontSize: '18px', lineHeight: 1 }}
+                title="Clear Schedule"
+              >
+                &times;
+              </button>
+            </>
+          ) : (
+            <>
+              <Calendar size={16} color="#64748b" />
+              <span style={{ fontSize: '14px', color: '#64748b' }}>Not scheduled</span>
+            </>
+          )}
         </div>
 
         <div className="publish__footer-center">
-          <span className="footer__label">DRAFT STATUS</span>
-          <div className="draft-status">
-            <span className="status-dot"></span>
-            <span>Auto-saved 2m ago</span>
+          {/* Schedule Post button lives here so it always has fresh state access */}
+          <div className="btn-group">
+            <button
+              className="btn-cyan-split"
+              onClick={() => setShowScheduleModal(true)}
+              disabled={isSubmitting}
+              id="schedule-post-btn"
+            >
+              <Calendar size={14} style={{ marginRight: '6px' }} />
+              Schedule Post
+            </button>
           </div>
         </div>
 
         <div className="publish__footer-right">
           <p className="footer__info">
-            Drafting content for <strong>{selectedAccounts.length} account{selectedAccounts.length !== 1 ? 's' : ''}</strong>. AI optimization active.
+            Drafting for <strong>{selectedAccounts.length} account{selectedAccounts.length !== 1 ? 's' : ''}</strong>. AI active.
           </p>
         </div>
       </div>
@@ -959,6 +1398,95 @@ export default function Publish() {
           )}
         </div>
       </div>
+
+      {/* Schedule Modal */}
+      {showScheduleModal && (
+        <div className="schedule-modal-overlay">
+          <div className="schedule-modal">
+            <div className="schedule-modal__header">
+              <h3>Schedule Post</h3>
+              <button className="btn-close" onClick={() => setShowScheduleModal(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            <div className="schedule-modal__content">
+              <label>Select Date & Time</label>
+              <div style={{ display: 'flex', gap: '16px' }}>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <label style={{ fontSize: '12px' }}>Date</label>
+                  <input
+                    type="date"
+                    value={scheduledAt ? scheduledAt.split('T')[0] : ''}
+                    onChange={(e) => {
+                      const date = e.target.value;
+                      if (!date) {
+                        setScheduledAt('');
+                        return;
+                      }
+                      const time = (scheduledAt && scheduledAt.includes('T')) ? scheduledAt.split('T')[1].substring(0, 5) : '12:00';
+                      setScheduledAt(`${date}T${time}`);
+                    }}
+                    min={new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0]}
+                  />
+                </div>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <label style={{ fontSize: '12px' }}>Time</label>
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    <select
+                      value={getHour12()}
+                      onChange={(e) => updateTime(e.target.value, getMinute(), getAmPm())}
+                      style={{ background: '#0f1724', border: '1px solid #334155', color: '#f8fafc', padding: '10px 8px', borderRadius: '8px', outline: 'none', appearance: 'none', cursor: 'pointer' }}
+                    >
+                      {Array.from({ length: 12 }, (_, i) => i + 1).map(h => (
+                        <option key={h} value={h.toString().padStart(2, '0')}>{h.toString().padStart(2, '0')}</option>
+                      ))}
+                    </select>
+                    <span style={{ color: '#94a3b8', alignSelf: 'center', fontWeight: 'bold' }}>:</span>
+                    <select
+                      value={getMinute()}
+                      onChange={(e) => updateTime(getHour12(), e.target.value, getAmPm())}
+                      style={{ background: '#0f1724', border: '1px solid #334155', color: '#f8fafc', padding: '10px 8px', borderRadius: '8px', outline: 'none', appearance: 'none', cursor: 'pointer' }}
+                    >
+                      {Array.from({ length: 60 }, (_, i) => i).map(m => (
+                        <option key={m} value={m.toString().padStart(2, '0')}>{m.toString().padStart(2, '0')}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={getAmPm()}
+                      onChange={(e) => updateTime(getHour12(), getMinute(), e.target.value)}
+                      style={{ background: '#0f1724', border: '1px solid #334155', color: '#f8fafc', padding: '10px 8px', borderRadius: '8px', outline: 'none', marginLeft: '4px', appearance: 'none', cursor: 'pointer' }}
+                    >
+                      <option value="AM">AM</option>
+                      <option value="PM">PM</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+              <p className="schedule-modal__hint" style={{ marginTop: '8px' }}>
+                Posts must be scheduled at least 5 minutes in the future.
+              </p>
+            </div>
+            <div className="schedule-modal__actions">
+              <button className="btn-outline-ghost" onClick={() => setShowScheduleModal(false)}>Cancel</button>
+              <button className="btn-cyan-split" onClick={() => {
+                if (!scheduledAt) {
+                  alert("Please select a date and time to schedule.");
+                  return;
+                }
+                const selectedTime = new Date(scheduledAt).getTime();
+                if (selectedTime < Date.now()) {
+                  alert("Schedule time must be in the future.");
+                  return;
+                }
+                setShowScheduleModal(false);
+                submitPost('scheduled');
+              }}>
+                Confirm Schedule
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -24,30 +24,30 @@ import './Dashboard.css';
 
 /* ── Static data (replace with API later) ── */
 
-const stats = [
+const defaultStats = [
   {
     id: 'total-scheduled',
     label: 'Total Scheduled',
-    value: '1,284',
-    badge: '+5.2%',
-    badgeType: 'up' as const,
+    value: '0',
+    badge: '—',
+    badgeType: 'neutral' as const,
     icon: <DollarSign size={18} />,
     iconBg: '#6366f1',
   },
   {
-    id: 'engagement-rate',
-    label: 'Engagement Rate',
-    value: '4.2%',
-    badge: '+1.2%',
-    badgeType: 'up' as const,
+    id: 'total-published',
+    label: 'Total Published',
+    value: '0',
+    badge: '—',
+    badgeType: 'neutral' as const,
     icon: <TrendingUp size={18} />,
     iconBg: '#8b5cf6',
   },
   {
     id: 'ai-usage',
     label: 'AI Usage',
-    value: '850/1k',
-    badge: '85%',
+    value: '0/0',
+    badge: '—',
     badgeType: 'neutral' as const,
     icon: <Target size={18} />,
     iconBg: '#2dd4bf',
@@ -55,7 +55,7 @@ const stats = [
   {
     id: 'active-accounts',
     label: 'Active Accounts',
-    value: '12',
+    value: '0',
     badge: 'Active',
     badgeType: 'active' as const,
     icon: <Sparkles size={18} />,
@@ -96,6 +96,7 @@ export default function Dashboard() {
   const { user } = useAuth();
   const [recentPosts, setRecentPosts] = useState<DashboardPost[]>([]);
   const [loadingPosts, setLoadingPosts] = useState(true);
+  const [dashboardStats, setDashboardStats] = useState(defaultStats);
 
   useEffect(() => {
     if (!user) return;
@@ -148,6 +149,57 @@ export default function Dashboard() {
       setLoadingPosts(false);
     };
 
+    const fetchDashboardData = async () => {
+      try {
+        const { data: postsData, error: postsError } = await supabase
+          .from('posts')
+          .select('id, status')
+          .eq('user_id', user.id);
+
+        const { data: accountsData, error: accountsError } = await supabase
+          .from('social_accounts')
+          .select('id')
+          .eq('user_id', user.id);
+
+        if (!postsError && postsData) {
+          const totalScheduled = postsData.filter((p: any) => p.status === 'scheduled').length;
+          const totalPublished = postsData.filter((p: any) => p.status === 'published').length;
+          const activeAccounts = !accountsError && accountsData ? accountsData.length : 0;
+
+          setDashboardStats(prev => prev.map(item => {
+            if (item.id === 'total-scheduled') {
+              return {
+                ...item,
+                value: totalScheduled.toLocaleString(),
+                badge: totalScheduled > 0 ? `${totalScheduled} pending` : 'None',
+                badgeType: totalScheduled > 0 ? 'active' as const : 'neutral' as const,
+              };
+            }
+            if (item.id === 'total-published') {
+              return {
+                ...item,
+                value: totalPublished.toLocaleString(),
+                badge: totalPublished > 0 ? `+${totalPublished}` : '—',
+                badgeType: totalPublished > 0 ? 'active' as const : 'neutral' as const,
+              };
+            }
+            if (item.id === 'active-accounts') {
+              return {
+                ...item,
+                value: activeAccounts.toString(),
+                badge: activeAccounts > 0 ? 'Active' : 'None',
+                badgeType: activeAccounts > 0 ? 'active' as const : 'neutral' as const,
+              };
+            }
+            return item;
+          }));
+        }
+      } catch (error) {
+        console.error('Dashboard fetch error:', error);
+      }
+    };
+
+    fetchDashboardData();
     fetchPosts();
   }, [user]);
 
@@ -155,7 +207,7 @@ export default function Dashboard() {
     <div className="dashboard" id="dashboard-page">
       {/* ─── Stat Cards ─── */}
       <section className="dashboard__stats" id="stat-cards">
-        {stats.map((stat) => (
+        {dashboardStats.map((stat) => (
           <div className="stat-card" key={stat.id} id={stat.id}>
             <div className="stat-card__header">
               <div

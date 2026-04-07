@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Facebook, Instagram, ShieldAlert, ArrowRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import API_URL from '../config/api';
 import './SocialOnboardingModal.css';
 
 interface SocialOnboardingModalProps {
@@ -36,7 +37,7 @@ export default function SocialOnboardingModal({ isOpen, onClose }: SocialOnboard
 
       // We redirect directly to our custom Express backend endpoint for Meta OAuth.
       // We pass the user_id and platform so the backend can attach the accounts to this user.
-      const backendUrl = `http://localhost:5000/api/auth/meta?user_id=${user.id}&platform=${platform}`;
+      const backendUrl = `${API_URL}/api/auth/meta?user_id=${user.id}&platform=${platform}`;
       window.location.href = backendUrl;
 
     } catch (err: any) {

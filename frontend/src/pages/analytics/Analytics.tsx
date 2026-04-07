@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Sparkles,
+  RefreshCw,
   // TrendingUp,
   // TrendingDown,
   // Instagram,
@@ -17,40 +18,40 @@ import {
   Pie,
   Cell,
 } from 'recharts';
+import { supabase } from '../../lib/supabaseClient';
+import API_URL from '../../config/api';
 import './Analytics.css';
 
-/* ── Static data ── */
+/* ── Formatter ── */
+const formatNumber = (num: number | null | undefined): string => {
+  if (num == null) return '0';
+  if (num >= 1000000) return (num / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (num >= 1000) return (num / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
+  return num.toString();
+};
 
-const stats = [
-  {
-    id: 'total-followers',
-    label: 'Total Followers',
-    value: '1.24M',
-    change: '+2.1%',
-    isUp: true,
-  },
-  {
-    id: 'avg-engagement',
-    label: 'Avg Engagement',
-    value: '4.52%',
-    change: '-0.5%',
-    isUp: false,
-  },
-  {
-    id: 'total-reach',
-    label: 'Total Reach',
-    value: '890.2K',
-    change: '+10.2%',
-    isUp: true,
-  },
-  {
-    id: 'conversions',
-    label: 'Conversions',
-    value: '12.4%',
-    change: '+1.4%',
-    isUp: true,
-  },
-];
+/* ── Types ── */
+interface Insights {
+  followers: number;
+  impressions: number;
+  reach: number;
+  profile_views: number;
+  posts_count: number;
+  engagement_rate: number | null;
+  likes: number;
+  comments: number;
+  fetched_at: string;
+}
+
+interface SocialAccount {
+  id: string;
+  platform: 'facebook' | 'instagram';
+  username: string;
+  profile_picture: string | null;
+  insights: Insights | null;
+}
+
+/* ── Static fallback / generic data ── */
 
 const engagementTrendData = [
   { date: 'OCT 01', interactions: 30 },
@@ -79,17 +80,142 @@ const demographicsData = [
   { name: '45+', value: 9.6, color: '#6366f1' },
 ];
 
-const platformReach = [
-  { name: 'Instagram', followers: '542.2K', percent: 68, color: '#e1306c', icon: '📷' },
-  { name: 'X (Twitter)', followers: '210.8K', percent: 42, color: '#2dd4bf', icon: '𝕏' },
-  { name: 'LinkedIn', followers: '105.4K', percent: 26, color: '#0077b5', icon: '💼' },
-  { name: 'YouTube', followers: '42.1K', percent: 12, color: '#ff0000', icon: '🎬' },
-];
-
 type DateRange = 'last30' | 'last90';
 
 export default function Analytics() {
   const [dateRange, setDateRange] = useState<DateRange>('last30');
+  const [accounts, setAccounts] = useState<SocialAccount[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [activeTab, setActiveTab] = useState<string>('all'); // 'all' or account.id
+
+  const fetchInsights = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const res = await fetch(`${API_URL}/api/analytics/insights?user_id=${session.user.id}`, {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          'ngrok-skip-browser-warning': 'true',
+        }
+      });
+      const data = await res.json();
+      setAccounts(data.accounts || []);
+    } catch (err) {
+      console.error('Error fetching insights:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchInsights();
+  }, []);
+
+  const handleRefresh = async () => {
+    if (accounts.length === 0) return;
+    setRefreshing(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      for (const acc of accounts) {
+        await fetch(`${API_URL}/api/analytics/refresh/${acc.id}`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            'ngrok-skip-browser-warning': 'true',
+          },
+        });
+      }
+      await fetchInsights();
+    } catch (err) {
+      console.error('Error refreshing insights:', err);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  // Calculations
+  const activeAccounts = activeTab === 'all' 
+    ? accounts 
+    : accounts.filter(a => a.id === activeTab);
+
+  let totalFollowers = 0;
+  let totalReach = 0;
+  let totalLikes = 0;
+  let totalComments = 0;
+  
+  let totalEngagementSum = 0;
+  let accountsWithEngagement = 0;
+  
+  let latestFetch: Date | null = null;
+  let topPlatformId: string | null = null;
+  let maxLikes = -1;
+
+  activeAccounts.forEach(acc => {
+    if (!acc.insights) return;
+    
+    totalFollowers += (acc.insights.followers || 0);
+    totalReach += (acc.insights.reach || 0);
+    
+    const accLikes = acc.insights.likes || 0;
+    const accComments = acc.insights.comments || 0;
+    
+    totalLikes += accLikes;
+    totalComments += accComments;
+
+    // Track best platform
+    if (accLikes > maxLikes) {
+      maxLikes = accLikes;
+      topPlatformId = acc.id;
+    }
+
+    if (acc.insights.engagement_rate != null) {
+      totalEngagementSum += acc.insights.engagement_rate;
+      accountsWithEngagement++;
+    }
+
+    if (acc.insights.fetched_at) {
+      const fetchDate = new Date(acc.insights.fetched_at);
+      if (!latestFetch || fetchDate > latestFetch) {
+        latestFetch = fetchDate;
+      }
+    }
+  });
+
+  const avgEngagement = accountsWithEngagement > 0 
+    ? (totalEngagementSum / accountsWithEngagement) 
+    : (totalFollowers > 0 ? ((totalLikes + totalComments) / totalFollowers) * 100 : 0);
+
+  const bestPlatform = accounts.find(a => a.id === topPlatformId);
+
+  // Platform styling helpers
+  const getPlatformColor = (platform: string) => platform === 'instagram' ? '#e1306c' : '#1877f2';
+  const getPlatformIcon = (platform: string) => platform === 'instagram' ? '📷' : '📘';
+
+  // Last Updated formatting
+  const formattedLastUpdated = latestFetch 
+    ? new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }).format(latestFetch)
+    : 'Never';
+
+  if (loading) {
+    return (
+      <div className="analytics" style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>
+        Loading your analytics...
+      </div>
+    );
+  }
+
+  if (accounts.length === 0) {
+    return (
+      <div className="analytics" style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>
+        <h2>No API Data</h2>
+        <p style={{ marginTop: 10 }}>Connect accounts on the Accounts page to see analytics.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="analytics" id="analytics-page">
@@ -98,20 +224,37 @@ export default function Analytics() {
         <div>
           <h1 className="analytics__title">Advanced AI Analytics</h1>
           <p className="analytics__subtitle">Deep insights into your social performance</p>
+          <p style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>Last updated: {formattedLastUpdated}</p>
         </div>
-        <div className="analytics__date-toggle">
-          <button
-            className={`analytics__date-btn ${dateRange === 'last30' ? 'analytics__date-btn--active' : ''}`}
-            onClick={() => setDateRange('last30')}
+        <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+          <button 
+            onClick={handleRefresh} 
+            disabled={refreshing}
+            style={{ 
+              display: 'flex', alignItems: 'center', gap: '8px', 
+              padding: '8px 16px', borderRadius: '6px', 
+              background: 'var(--bg-card)', border: '1px solid var(--border-color)', 
+              color: 'var(--text-primary)', cursor: refreshing ? 'not-allowed' : 'pointer' 
+            }}
           >
-            Last 30 Days
+            <RefreshCw size={14} className={refreshing ? 'spin' : ''} />
+            {refreshing ? 'Refreshing...' : 'Refresh'}
           </button>
-          <button
-            className={`analytics__date-btn ${dateRange === 'last90' ? 'analytics__date-btn--active' : ''}`}
-            onClick={() => setDateRange('last90')}
-          >
-            Last 90 Days
-          </button>
+          
+          <div className="analytics__date-toggle">
+            <button
+              className={`analytics__date-btn ${dateRange === 'last30' ? 'analytics__date-btn--active' : ''}`}
+              onClick={() => setDateRange('last30')}
+            >
+              Last 30 Days
+            </button>
+            <button
+              className={`analytics__date-btn ${dateRange === 'last90' ? 'analytics__date-btn--active' : ''}`}
+              onClick={() => setDateRange('last90')}
+            >
+              Last 90 Days
+            </button>
+          </div>
         </div>
       </div>
 
@@ -128,26 +271,79 @@ export default function Analytics() {
           </div>
         </div>
         <p className="ai-summary__text">
-          Your engagement is up <strong>12.4%</strong> this month. Peak activity occurs on{' '}
-          <strong>Tuesdays at 6 PM EST</strong>. Video content on Instagram is performing{' '}
-          <em>3.5x better</em> than static posts. Recommend increasing Reels production by 20%.
+          You have reached a total of <strong>{formatNumber(totalFollowers)} followers</strong>. 
+          Your average engagement rate is currently <strong>{avgEngagement.toFixed(2)}%</strong>. 
+          {bestPlatform && (
+            <span> Your highest performing platform by likes is <em>{bestPlatform.platform}</em> ({bestPlatform.username}).</span>
+          )}
+          {' '}Continue posting consistently to maintain this momentum.
         </p>
       </div>
 
       {/* Stat Cards */}
       <section className="analytics__stats" id="analytics-stat-cards">
-        {stats.map((stat) => (
-          <div className="a-stat-card" key={stat.id} id={stat.id}>
-            <p className="a-stat-card__label">{stat.label}</p>
-            <div className="a-stat-card__row">
-              <span className="a-stat-card__value">{stat.value}</span>
-              <span className={`a-stat-card__change ${stat.isUp ? 'a-stat-card__change--up' : 'a-stat-card__change--down'}`}>
-                {stat.change}
-              </span>
-            </div>
+        <div className="a-stat-card">
+          <p className="a-stat-card__label">Total Followers</p>
+          <div className="a-stat-card__row">
+            <span className="a-stat-card__value">{formatNumber(totalFollowers)}</span>
+            <span className="a-stat-card__change a-stat-card__change--up">--</span>
           </div>
-        ))}
+        </div>
+        <div className="a-stat-card">
+          <p className="a-stat-card__label">Avg Engagement</p>
+          <div className="a-stat-card__row">
+            <span className="a-stat-card__value">{avgEngagement.toFixed(2)}%</span>
+            <span className="a-stat-card__change a-stat-card__change--up">--</span>
+          </div>
+        </div>
+        <div className="a-stat-card">
+          <p className="a-stat-card__label">Total Reach</p>
+          <div className="a-stat-card__row">
+            <span className="a-stat-card__value">{formatNumber(totalReach)}</span>
+            <span className="a-stat-card__change a-stat-card__change--up">--</span>
+          </div>
+        </div>
+        <div className="a-stat-card">
+          <p className="a-stat-card__label">Total Likes</p>
+          <div className="a-stat-card__row">
+            <span className="a-stat-card__value">{formatNumber(totalLikes)}</span>
+            <span className="a-stat-card__change a-stat-card__change--up">--</span>
+          </div>
+        </div>
       </section>
+
+      {/* Platform Tabs */}
+      <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
+        <button
+          onClick={() => setActiveTab('all')}
+          style={{
+            padding: '8px 16px', borderRadius: '20px', fontSize: '13px', fontWeight: 500,
+            background: activeTab === 'all' ? 'var(--accent)' : 'var(--bg-card)',
+            color: activeTab === 'all' ? '#fff' : 'var(--text-secondary)',
+            border: `1px solid ${activeTab === 'all' ? 'var(--accent)' : 'var(--border-color)'}`,
+            cursor: 'pointer', transition: 'all 0.2s'
+          }}
+        >
+          All Platforms
+        </button>
+        {accounts.map(acc => (
+          <button
+            key={acc.id}
+            onClick={() => setActiveTab(acc.id)}
+            style={{
+              padding: '6px 16px', borderRadius: '20px', fontSize: '13px', fontWeight: 500,
+              display: 'flex', alignItems: 'center', gap: '6px',
+              background: activeTab === acc.id ? getPlatformColor(acc.platform) : 'var(--bg-card)',
+              color: activeTab === acc.id ? '#fff' : 'var(--text-secondary)',
+              border: `1px solid ${activeTab === acc.id ? getPlatformColor(acc.platform) : 'var(--border-color)'}`,
+              cursor: 'pointer', transition: 'all 0.2s'
+            }}
+          >
+            <span>{getPlatformIcon(acc.platform)}</span>
+            {acc.username}
+          </button>
+        ))}
+      </div>
 
       {/* Engagement Trends Chart */}
       <section className="analytics__chart-card" id="engagement-trends">
@@ -260,21 +456,25 @@ export default function Analytics() {
           <p className="chart-card__sub">Follower growth by network</p>
 
           <div className="platforms__list">
-            {platformReach.map((platform) => (
-              <div className="platform-row" key={platform.name}>
-                <div className="platform-row__header">
-                  <span className="platform-row__icon">{platform.icon}</span>
-                  <span className="platform-row__name">{platform.name}</span>
-                  <span className="platform-row__count">{platform.followers}</span>
+            {accounts.map((acc) => {
+              const followers = acc.insights?.followers || 0;
+              const percent = totalFollowers > 0 ? (followers / totalFollowers) * 100 : 0;
+              return (
+                <div className="platform-row" key={acc.id}>
+                  <div className="platform-row__header">
+                    <span className="platform-row__icon">{getPlatformIcon(acc.platform)}</span>
+                    <span className="platform-row__name">{acc.username}</span>
+                    <span className="platform-row__count">{formatNumber(followers)}</span>
+                  </div>
+                  <div className="platform-row__bar-bg">
+                    <div
+                      className="platform-row__bar-fill"
+                      style={{ width: `${percent}%`, background: getPlatformColor(acc.platform) }}
+                    />
+                  </div>
                 </div>
-                <div className="platform-row__bar-bg">
-                  <div
-                    className="platform-row__bar-fill"
-                    style={{ width: `${platform.percent}%`, background: platform.color }}
-                  />
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </section>

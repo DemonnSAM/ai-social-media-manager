@@ -1,4 +1,5 @@
 import supabaseAdmin from "../config/supabaseAdmin.js";
+import { addScheduledJob } from "../queue/postQueue.js";
 
 export const createPost = async (req, res) => {
     try {
@@ -135,6 +136,18 @@ export const createPost = async (req, res) => {
 
             if (targetsError) {
                 console.error("Error creating post targets:", targetsError);
+            }
+        }
+
+        // 4. Queue the scheduled job AFTER targets are inserted
+        // (worker needs targets to exist to process them)
+        if (status === 'scheduled' && post.scheduled_at) {
+            try {
+                await addScheduledJob(post.id, post.scheduled_at);
+                console.log(`[postController] Scheduled job queued for post ${post.id} at ${post.scheduled_at}`);
+            } catch (queueErr) {
+                // Don't fail the request if queue is temporarily unavailable
+                console.error(`[postController] Failed to queue job for post ${post.id}:`, queueErr.message);
             }
         }
 

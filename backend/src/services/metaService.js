@@ -2,7 +2,7 @@ import axios from 'axios';
 import dotenv from 'dotenv';
 dotenv.config();
 
-const META_API_BASE = 'https://graph.facebook.com/v19.0';
+const META_API_BASE = 'https://graph.facebook.com/v21.0';
 const CLIENT_ID = process.env.META_APP_ID;
 const CLIENT_SECRET = process.env.META_APP_SECRET;
 const REDIRECT_URI = process.env.META_REDIRECT_URI;
@@ -50,18 +50,29 @@ export const MetaService = {
 
   /**
    * Step 3: Fetch the user's Facebook Pages
+   * Note: We fetch minimal fields first — picture{url} nested syntax can
+   * sometimes cause empty results or API errors in some app configurations.
    */
-  async getFacebookPages(userAccessToken) {
+  async getFacebookPages(userAccessToken, platform = 'facebook') {
     try {
+      const fields = platform === 'instagram'
+        ? 'id,name,access_token,instagram_business_account'
+        : 'id,name,access_token';
+
       const response = await axios.get(`${META_API_BASE}/me/accounts`, {
         params: {
           access_token: userAccessToken,
-          fields: 'id,name,access_token,picture{url},instagram_business_account',
+          fields,
         },
       });
+      console.log("TOKEN USED:", userAccessToken);
+      // Log full raw response for debugging
+      console.log('[MetaService] Raw /me/accounts response:', JSON.stringify(response.data, null, 2));
+
       return response.data.data; // Array of pages
     } catch (error) {
-      console.error('Meta: Error fetching FB pages', error.response?.data || error.message);
+      const errDetail = error.response?.data || error.message;
+      console.error('[MetaService] Error fetching FB pages:', JSON.stringify(errDetail, null, 2));
       throw new Error('Failed to fetch Facebook Pages');
     }
   },

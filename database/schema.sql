@@ -64,7 +64,7 @@ CREATE POLICY "Users can view insights for their own accounts"
 -- posts table (the content itself — platform-agnostic)
 CREATE TABLE public.posts (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+  user_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE,
   content TEXT,
   media_url TEXT,
   status TEXT DEFAULT 'draft' CHECK (status IN ('draft','scheduled','published','failed')),
@@ -172,12 +172,15 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 BEGIN
-  INSERT INTO public.profiles (id, email, email_verified)
-  VALUES (new.id, new.email, new.email_confirmed_at IS NOT NULL);
+  INSERT INTO public.profiles (id, email, email_verified, created_at)
+  VALUES (new.id, new.email, new.email_confirmed_at IS NOT NULL, now())
+  ON CONFLICT (id) DO NOTHING; -- safe to run multiple times
   RETURN new;
 END;
 $$;
 
+-- Drop and recreate trigger so this file is idempotent
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
@@ -249,3 +252,14 @@ CREATE POLICY "Users can insert their own media"
 CREATE POLICY "Users can delete their own media"
   ON public.media FOR DELETE
   USING (EXISTS (SELECT 1 FROM public.posts p WHERE p.id = post_id AND p.user_id = auth.uid()));
+
+
+ALTER TABLE public.post_targets
+ADD COLUMN created_at TIMESTAMP DEFAULT NOW();
+
+-- Insert profiles for existing users
+INSERT INTO public.profiles (id, email, email_verified, created_at)
+SELECT au.id, au.email, au.email_confirmed_at IS NOT NULL, au.created_at
+FROM auth.users au
+LEFT JOIN public.profiles p ON p.id = au.id
+WHERE p.id IS NULL;
