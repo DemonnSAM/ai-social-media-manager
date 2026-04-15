@@ -87,7 +87,7 @@ export default function Sidebar({ onOpenSettings }: SidebarProps) {
   }, []);
 
   const handleNavClick = (item: NavItem) => {
-    if (item.label === 'AI Studio' || item.label === 'Team Management') {
+    if (item.label === 'AI Studio' || item.label === 'Team Management' || item.label === 'Engagement Inbox') {
       setBetaFeature(item.label);
     } else if (item.label === 'Settings') {
       onOpenSettings();

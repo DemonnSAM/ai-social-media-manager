@@ -90,8 +90,10 @@ Return ONLY a JSON object in this exact format, no markdown:
 
   const result = await model.generateContent([prompt, imagePart]);
   const text = result.response.text();
+  const tokensUsed = result.response.usageMetadata?.totalTokenCount || 0;
 
-  return parseGeminiJson(text);
+  const parsed = parseGeminiJson(text);
+  return { ...parsed, tokensUsed };
 }
 
 /**
@@ -156,8 +158,10 @@ Return ONLY a JSON object in this exact format, no markdown:
 
     const result = await model.generateContent([prompt, ...imageParts]);
     const text = result.response.text();
+    const tokensUsed = result.response.usageMetadata?.totalTokenCount || 0;
 
-    return parseGeminiJson(text);
+    const parsed = parseGeminiJson(text);
+    return { ...parsed, tokensUsed };
   } finally {
     // Always clean up
     cleanupFrames(framePaths);
@@ -185,8 +189,10 @@ Return ONLY a JSON object, no markdown:
 
   const result = await model.generateContent(prompt);
   const text = result.response.text();
+  const tokensUsed = result.response.usageMetadata?.totalTokenCount || 0;
+
   const parsed = parseGeminiJson(text);
-  return parsed.caption;
+  return { caption: parsed.caption, tokensUsed };
 }
 
 /**
@@ -205,8 +211,10 @@ Return ONLY a JSON object, no markdown:
 
   const result = await model.generateContent(prompt);
   const text = result.response.text();
+  const tokensUsed = result.response.usageMetadata?.totalTokenCount || 0;
+
   const parsed = parseGeminiJson(text);
-  return parsed.caption;
+  return { caption: parsed.caption, tokensUsed };
 }
 
 /**
@@ -228,7 +236,10 @@ Return ONLY a JSON object, no markdown:
 
   const result = await model.generateContent(prompt);
   const text = result.response.text();
-  return parseGeminiJson(text);
+  const tokensUsed = result.response.usageMetadata?.totalTokenCount || 0;
+
+  const parsed = parseGeminiJson(text);
+  return { ...parsed, tokensUsed };
 }
 
 /**
@@ -258,5 +269,39 @@ Return ONLY a JSON object, no markdown:
 
   const result = await model.generateContent(prompt);
   const text = result.response.text();
-  return parseGeminiJson(text);
+  const tokensUsed = result.response.usageMetadata?.totalTokenCount || 0;
+
+  const parsed = parseGeminiJson(text);
+  return { ...parsed, tokensUsed };
+}
+
+/**
+ * Generates a dashboard performance insight from social account data.
+ * @param {Array<{platform, username, followers, likes, comments, impressions, reach, posts_count}>} accountInsightsArray
+ */
+export async function generateDashboardInsight(accountInsightsArray) {
+  const prompt = `You are a social media expert analyst. Analyze this account performance data and provide actionable insights.
+
+Account data: ${JSON.stringify(accountInsightsArray)}
+
+Return ONLY a JSON object, no markdown:
+{
+  "insight": "One powerful insight sentence about their performance (mention specific numbers)",
+  "recommendation": "One specific actionable recommendation",
+  "hashtags": ["#tag1", "#tag2", "#tag3", "#tag4", "#tag5"],
+  "best_platform": "platform name that is performing best"
+}`;
+
+  const result = await model.generateContent(prompt);
+  const text = result.response.text();
+  const tokensUsed = result.response.usageMetadata?.totalTokenCount || 0;
+
+  const parsed = parseGeminiJson(text);
+  return {
+    insight: parsed.insight,
+    recommendation: parsed.recommendation,
+    hashtags: parsed.hashtags,
+    best_platform: parsed.best_platform,
+    tokensUsed,
+  };
 }

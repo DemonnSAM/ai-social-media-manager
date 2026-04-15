@@ -6,7 +6,8 @@ import {
   Sparkles,
   ArrowRight,
   AtSign,
-  MessageSquare
+  MessageSquare,
+  RefreshCw,
 } from 'lucide-react';
 import {
   BarChart,
@@ -19,7 +20,7 @@ import {
 } from 'recharts';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import './Dashboard.css';
 
 /* ── Static data (replace with API later) ── */
@@ -46,7 +47,7 @@ const defaultStats = [
   {
     id: 'ai-usage',
     label: 'AI Usage',
-    value: '0/0',
+    value: '0 tokens',
     badge: '—',
     badgeType: 'neutral' as const,
     icon: <Target size={18} />,
@@ -63,13 +64,6 @@ const defaultStats = [
   },
 ];
 
-const trendingHashtags = [
-  '#AIRevolution',
-  '#SaaSGrowth',
-  '#FutureOfWork',
-  '+4 Trending',
-];
-
 // Removed static upcomingPosts mock data
 
 const chartData = [
@@ -78,7 +72,7 @@ const chartData = [
   { platform: 'X Platform', current: 60, previous: 45 },
 ];
 
-/* ── Component ── */
+/* ── Types ── */
 
 interface DashboardPost {
   id: string;
@@ -92,11 +86,65 @@ interface DashboardPost {
   imagePreview: string | null;
 }
 
+interface InsightData {
+  insight: string;
+  recommendation: string;
+  hashtags: string[];
+  best_platform: string | null;
+  cached: boolean;
+}
+
+/* ── Component ── */
+
 export default function Dashboard() {
   const { user } = useAuth();
   const [recentPosts, setRecentPosts] = useState<DashboardPost[]>([]);
   const [loadingPosts, setLoadingPosts] = useState(true);
   const [dashboardStats, setDashboardStats] = useState(defaultStats);
+
+  // AI insight state
+  const [insightData, setInsightData] = useState<InsightData | null>(null);
+  const [insightLoading, setInsightLoading] = useState(false);
+  const [insightError, setInsightError] = useState<string | null>(null);
+
+  const fetchInsight = useCallback(async (force = false) => {
+    if (!user) return;
+    setInsightLoading(true);
+    setInsightError(null);
+
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+      const url = `${apiUrl}/api/ai/dashboard-insight${force ? '?force=true' : ''}`;
+
+      const response = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to fetch insight');
+      }
+
+      if (data.error) {
+        // Graceful no-data error from backend
+        setInsightError(data.error);
+        setInsightData(null);
+      } else {
+        setInsightData(data);
+      }
+    } catch (err: any) {
+      setInsightError('Could not load insights. Try refreshing.');
+      setInsightData(null);
+    } finally {
+      setInsightLoading(false);
+    }
+  }, [user]);
 
   useEffect(() => {
     if (!user) return;
@@ -161,6 +209,16 @@ export default function Dashboard() {
           .select('id')
           .eq('user_id', user.id);
 
+        // Fetch total AI token usage
+        const { data: usageData } = await supabase
+          .from('ai_usage')
+          .select('tokens_used')
+          .eq('user_id', user.id);
+
+        const totalTokensUsed = usageData
+          ? usageData.reduce((sum: number, row: any) => sum + (row.tokens_used || 0), 0)
+          : 0;
+
         if (!postsError && postsData) {
           const totalScheduled = postsData.filter((p: any) => p.status === 'scheduled').length;
           const totalPublished = postsData.filter((p: any) => p.status === 'published').length;
@@ -183,6 +241,14 @@ export default function Dashboard() {
                 badgeType: totalPublished > 0 ? 'active' as const : 'neutral' as const,
               };
             }
+            if (item.id === 'ai-usage') {
+              return {
+                ...item,
+                value: `${totalTokensUsed.toLocaleString()} tokens`,
+                badge: totalTokensUsed > 0 ? 'Used' : '—',
+                badgeType: totalTokensUsed > 0 ? 'active' as const : 'neutral' as const,
+              };
+            }
             if (item.id === 'active-accounts') {
               return {
                 ...item,
@@ -201,7 +267,8 @@ export default function Dashboard() {
 
     fetchDashboardData();
     fetchPosts();
-  }, [user]);
+    fetchInsight(false);
+  }, [user, fetchInsight]);
 
   return (
     <div className="dashboard" id="dashboard-page">
@@ -235,27 +302,100 @@ export default function Dashboard() {
               <Sparkles size={20} />
             </div>
             <h2 className="insight-card__title">AI Performance Insight</h2>
+            {/* Refresh button */}
+            <button
+              id="refresh-insight-btn"
+              onClick={() => fetchInsight(true)}
+              disabled={insightLoading}
+              title="Refresh insight"
+              style={{
+                marginLeft: 'auto',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                background: 'rgba(99,102,241,0.15)',
+                border: '1px solid rgba(99,102,241,0.3)',
+                borderRadius: '6px',
+                color: '#a5b4fc',
+                fontSize: '12px',
+                padding: '4px 10px',
+                cursor: insightLoading ? 'not-allowed' : 'pointer',
+                opacity: insightLoading ? 0.6 : 1,
+                transition: 'opacity 0.2s',
+              }}
+            >
+              <RefreshCw
+                size={12}
+                style={{
+                  animation: insightLoading ? 'spin 1s linear infinite' : 'none',
+                }}
+              />
+              Refresh
+            </button>
             <div className="insight-card__sparkle">
               <Sparkles size={48} className="insight-card__sparkle-icon" />
             </div>
           </div>
 
-          <p className="insight-card__text">
-            Your <strong>LinkedIn engagement is up 20%</strong> this week.
-            Recommendation: Use more video content between{' '}
-            <strong>9 AM and 11 AM</strong> for maximum reach.
-          </p>
+          {/* Loading state */}
+          {insightLoading && !insightData && (
+            <p className="insight-card__text" style={{ color: '#94a3b8' }}>
+              Generating AI insight…
+            </p>
+          )}
 
-          <div className="insight-card__tags">
-            {trendingHashtags.map((tag, i) => (
-              <span
-                className={`insight-card__tag ${i === trendingHashtags.length - 1 ? 'insight-card__tag--more' : ''}`}
-                key={tag}
-              >
-                {tag}
-              </span>
-            ))}
-          </div>
+          {/* Error state */}
+          {!insightLoading && insightError && (
+            <p className="insight-card__text" style={{ color: '#94a3b8' }}>
+              {insightError.includes('sync') || insightError.includes('No analytics')
+                ? 'Connect and sync your accounts to see AI insights.'
+                : 'Could not load insights. Try refreshing.'}
+            </p>
+          )}
+
+          {/* Data state */}
+          {!insightLoading && insightData && (
+            <>
+              <p className="insight-card__text">
+                {insightData.insight}{' '}
+                <strong>{insightData.recommendation}</strong>
+              </p>
+
+              <div className="insight-card__tags">
+                {insightData.hashtags.map((tag, i) => (
+                  <span
+                    className="insight-card__tag"
+                    key={`${tag}-${i}`}
+                  >
+                    {tag}
+                  </span>
+                ))}
+                {/* Cached / Fresh badge */}
+                <span
+                  style={{
+                    fontSize: '10px',
+                    padding: '2px 8px',
+                    borderRadius: '999px',
+                    background: insightData.cached
+                      ? 'rgba(100,116,139,0.25)'
+                      : 'rgba(34,197,94,0.18)',
+                    color: insightData.cached ? '#94a3b8' : '#4ade80',
+                    border: `1px solid ${insightData.cached ? 'rgba(100,116,139,0.3)' : 'rgba(34,197,94,0.3)'}`,
+                    marginLeft: '4px',
+                  }}
+                >
+                  {insightData.cached ? 'Cached' : 'Fresh'}
+                </span>
+              </div>
+            </>
+          )}
+
+          {/* Fallback when no data and not loading/error */}
+          {!insightLoading && !insightData && !insightError && (
+            <p className="insight-card__text" style={{ color: '#94a3b8' }}>
+              Connect and sync your accounts to see AI insights.
+            </p>
+          )}
 
           <Link to="/analytics" className="insight-card__link" id="view-ai-analysis">
             View Detailed AI Analysis <ArrowRight size={14} />
@@ -369,6 +509,14 @@ export default function Dashboard() {
           </div>
         </div>
       </section>
+
+      {/* ─── Spinner keyframe (inline for RefreshCw animation) ─── */}
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Plus,
   Zap,
@@ -14,6 +14,9 @@ import {
   Users
 } from 'lucide-react';
 import './Accounts.css';
+import { useAuth } from '../../context/AuthContext';
+import { supabase } from '../../lib/supabaseClient';
+import API_URL from '../../config/api';
 
 // Platform data as per image
 const basePlatformsData = [
@@ -25,11 +28,6 @@ const basePlatformsData = [
   { id: 'tt', name: 'Threads', accounts: 0, icon: <AtSign size={24} />, color: 'var(--platform-th, #000000)', bg: '#0f1724' },
   { id: 'tk', name: 'TikTok', accounts: 0, icon: <Video size={24} />, color: 'var(--platform-tk, #000000)', bg: '#000000', border: '2px solid #00f2fe' },
 ];
-
-import { useEffect } from 'react';
-import { useAuth } from '../../context/AuthContext';
-import { supabase } from '../../lib/supabaseClient';
-import API_URL from '../../config/api';
 
 interface SocialAccount {
   id: string;
@@ -195,178 +193,129 @@ export default function Accounts() {
         </button>
       </div>
 
-      <div className="accounts__grid">
-        <div className="accounts__main">
-          {/* Stats Row */}
-          <div className="accounts__stats-row">
-            <div className="accounts__stat-card">
-              <span className="stat-card__label">TOTAL ACCOUNTS</span>
-              <div className="stat-card__bottom">
-                <span className="stat-card__value">{stats.totalAccounts}</span>
-                <div className="stat-card__icon stat-card__icon--blue"><Zap size={16} /></div>
-              </div>
-            </div>
-            <div className="accounts__stat-card">
-              <span className="stat-card__label">PLATFORMS</span>
-              <div className="stat-card__bottom">
-                <span className="stat-card__value">{stats.totalPlatforms.toString().padStart(2, '0')}</span>
-                <div className="stat-card__icon stat-card__icon--purple"><Zap size={16} /></div>
-              </div>
-            </div>
-            <div className="accounts__stat-card">
-              <span className="stat-card__label">ACTIVE PROFILES</span>
-              <div className="stat-card__bottom">
-                <span className="stat-card__value">{stats.activeProfiles}</span>
-                <div className="stat-card__icon stat-card__icon--green"><CheckCircle2 size={16} /></div>
-              </div>
+      <div className="accounts__main">
+        {/* Stats Row */}
+        <div className="accounts__stats-row">
+          <div className="accounts__stat-card">
+            <span className="stat-card__label">TOTAL ACCOUNTS</span>
+            <div className="stat-card__bottom">
+              <span className="stat-card__value">{stats.totalAccounts}</span>
+              <div className="stat-card__icon stat-card__icon--blue"><Zap size={16} /></div>
             </div>
           </div>
-
-          {/* Platform Connections */}
-          <div className="accounts__section" id="platform-connections">
-            <h2 className="section__title">
-              <Zap size={18} className="section__title-icon" color="#06b6d4" />
-              Platform Connections
-            </h2>
-            <div className="platforms__grid">
-              {platformsData.map((plat) => {
-                const connected = isConnected(plat.id);
-                return (
-                  <div className={`platform-card ${connected ? 'platform-card--connected' : ''}`} key={plat.id}>
-                    <div className="platform-card__icon-wrap" style={{ background: plat.bg, border: plat.border || 'none' }}>
-                      {plat.icon}
-                    </div>
-                    <h3 className="platform-card__name">{plat.name}</h3>
-                    <p className="platform-card__count">{plat.accounts} {plat.accounts === 1 ? 'Account' : 'Accounts'}</p>
-
-                    {connected ? (
-                      <div className="platform-card__connected-wrap">
-                        <div className="platform-card__connected-badge">
-                          <CheckCircle2 size={14} /> Connected
-                        </div>
-                        <button
-                          className="platform-card__disconnect-btn"
-                          onClick={() => {
-                            const accs = profiles.filter(p => {
-                              const map: Record<string, string> = { ig: 'instagram', fb: 'facebook', li: 'linkedin', x: 'x', yt: 'youtube', tt: 'threads', tk: 'tiktok' };
-                              return p.platform === (map[plat.id] || plat.id);
-                            });
-                            accs.forEach(a => handleDisconnect(a.id));
-                          }}
-                        >
-                          <Unlink size={12} /> Disconnect
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        className="platform-card__btn"
-                        onClick={() => handleConnect(plat.id)}
-                        disabled={connectingPlatform === plat.id}
-                      >
-                        {connectingPlatform === plat.id ? '     ' : 'Connect'}
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
+          <div className="accounts__stat-card">
+            <span className="stat-card__label">PLATFORMS</span>
+            <div className="stat-card__bottom">
+              <span className="stat-card__value">{stats.totalPlatforms.toString().padStart(2, '0')}</span>
+              <div className="stat-card__icon stat-card__icon--purple"><Zap size={16} /></div>
             </div>
           </div>
-
-          {/* Connected Profiles */}
-          <div className="accounts__section" id="connected-profiles">
-            <h2 className="section__title">
-              <Users size={18} className="section__title-icon" />
-              Connected Profiles
-            </h2>
-            <div className="profiles__list">
-              {loading ? (
-                <div style={{ padding: '20px', color: '#94a3b8', textAlign: 'center' }}>Loading accounts...</div>
-              ) : profiles.length === 0 ? (
-                <div style={{ padding: '20px', color: '#94a3b8', textAlign: 'center', background: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-color)' }}>
-                  No accounts connected yet. Connect one above.
-                </div>
-              ) : (
-                profiles.map((profile) => (
-                  <div className="profile-row" key={profile.id}>
-                    <img src={profile.profile_picture} alt={profile.username} className="profile-row__avatar" />
-                    <div className="profile-row__info">
-                      <div className="profile-row__name-line">
-                        <span className="profile-row__handle">@{profile.username}</span>
-                        <span className="profile-row__badge">ACTIVE</span>
-                      </div>
-                      <div className="profile-row__meta">
-                        <span className="profile-row__followers"><Zap size={12} /> {profile.followers.toLocaleString()} followers</span>
-                        <span className="profile-row__platform" style={{ textTransform: 'capitalize' }}><Instagram size={12} /> {profile.platform}</span>
-                      </div>
-                    </div>
-                    <div className="profile-row__actions">
-                      <span className="profile-row__toggle-label">AI SCHEDULING</span>
-                      <div
-                        className="toggle-switch toggle-switch--on"
-                        onClick={() => toggleScheduling(profile.id)}
-                      >
-                        <div className="toggle-switch__thumb" />
-                      </div>
-                      <button
-                        className="profile-row__disconnect-btn"
-                        onClick={() => handleDisconnect(profile.id)}
-                        title="Disconnect account"
-                      >
-                        <Unlink size={14} />
-                        Disconnect
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
+          <div className="accounts__stat-card">
+            <span className="stat-card__label">ACTIVE PROFILES</span>
+            <div className="stat-card__bottom">
+              <span className="stat-card__value">{stats.activeProfiles}</span>
+              <div className="stat-card__icon stat-card__icon--green"><CheckCircle2 size={16} /></div>
             </div>
           </div>
         </div>
 
-        {/* Right Sidebar - AI Insights */}
-        <div className="accounts__sidebar">
-          <div className="insights-panel">
-            <div className="insights-panel__header">
-              <Zap size={18} className="insights-panel__icon" />
-              <h3>AI Insights</h3>
-            </div>
+        {/* Platform Connections */}
+        <div className="accounts__section" id="platform-connections">
+          <h2 className="section__title">
+            <Zap size={18} className="section__title-icon" color="#06b6d4" />
+            Platform Connections
+          </h2>
+          <div className="platforms__grid">
+            {platformsData.map((plat) => {
+              const connected = isConnected(plat.id);
+              return (
+                <div className={`platform-card ${connected ? 'platform-card--connected' : ''}`} key={plat.id}>
+                  <div className="platform-card__icon-wrap" style={{ background: plat.bg, border: plat.border || 'none' }}>
+                    {plat.icon}
+                  </div>
+                  <h3 className="platform-card__name">{plat.name}</h3>
+                  <p className="platform-card__count">{plat.accounts} {plat.accounts === 1 ? 'Account' : 'Accounts'}</p>
 
-            <div className="insight-card">
-              <span className="insight-card__badge insight-card__badge--cyan">
-                <span className="dot dot--cyan"></span> EFFICIENCY TIP
-              </span>
-              <p className="insight-card__text">
-                Instagram account <strong>@acme_global</strong> has shown <strong className="text-cyan">24% higher</strong> engagement on video content this month.
-              </p>
-              <div className="insight-card__actions">
-                <button className="btn-cyan">Apply Strategy</button>
-                <button className="btn-ghost">Dismiss</button>
-              </div>
-            </div>
+                  {connected ? (
+                    <div className="platform-card__connected-wrap">
+                      <div className="platform-card__connected-badge">
+                        <CheckCircle2 size={14} /> Connected
+                      </div>
+                      <button
+                        className="platform-card__disconnect-btn"
+                        onClick={() => {
+                          const accs = profiles.filter(p => {
+                            const map: Record<string, string> = { ig: 'instagram', fb: 'facebook', li: 'linkedin', x: 'x', yt: 'youtube', tt: 'threads', tk: 'tiktok' };
+                            return p.platform === (map[plat.id] || plat.id);
+                          });
+                          accs.forEach(a => handleDisconnect(a.id));
+                        }}
+                      >
+                        <Unlink size={12} /> Disconnect
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      className="platform-card__btn"
+                      onClick={() => handleConnect(plat.id)}
+                      disabled={connectingPlatform === plat.id}
+                    >
+                      {connectingPlatform === plat.id ? '     ' : 'Connect'}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
 
-            <div className="insight-card">
-              <span className="insight-card__badge insight-card__badge--purple">
-                <span className="dot dot--purple"></span> NETWORK ALERT
-              </span>
-              <p className="insight-card__text">
-                LinkedIn API tokens expire in <strong>3 days</strong>. Re-authenticate to maintain AI scheduling continuity.
-              </p>
-              <div className="insight-card__actions">
-                <button className="btn-outline">Refresh Token</button>
+        {/* Connected Profiles */}
+        <div className="accounts__section" id="connected-profiles">
+          <h2 className="section__title">
+            <Users size={18} className="section__title-icon" />
+            Connected Profiles
+          </h2>
+          <div className="profiles__list">
+            {loading ? (
+              <div style={{ padding: '20px', color: '#94a3b8', textAlign: 'center' }}>Loading accounts...</div>
+            ) : profiles.length === 0 ? (
+              <div style={{ padding: '20px', color: '#94a3b8', textAlign: 'center', background: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-color)' }}>
+                No accounts connected yet. Connect one above.
               </div>
-            </div>
-
-            <div className="insight-card insight-card--progress">
-              <p className="insight-card__label">Audience Growth Potential</p>
-              <div className="progress-bar">
-                <div className="progress-bar__fill" style={{ width: '82%' }}></div>
-              </div>
-              <div className="progress-bar__footer">
-                <span className="progress-bar__status text-cyan">HIGH GROWTH DETECTED</span>
-                <span className="progress-bar__percent">82%</span>
-              </div>
-            </div>
-
+            ) : (
+              profiles.map((profile) => (
+                <div className="profile-row" key={profile.id}>
+                  <img src={profile.profile_picture} alt={profile.username} className="profile-row__avatar" />
+                  <div className="profile-row__info">
+                    <div className="profile-row__name-line">
+                      <span className="profile-row__handle">@{profile.username}</span>
+                      <span className="profile-row__badge">ACTIVE</span>
+                    </div>
+                    <div className="profile-row__meta">
+                      <span className="profile-row__followers"><Zap size={12} /> {profile.followers.toLocaleString()} followers</span>
+                      <span className="profile-row__platform" style={{ textTransform: 'capitalize' }}><Instagram size={12} /> {profile.platform}</span>
+                    </div>
+                  </div>
+                  <div className="profile-row__actions">
+                    <span className="profile-row__toggle-label">AI SCHEDULING</span>
+                    <div
+                      className="toggle-switch toggle-switch--on"
+                      onClick={() => toggleScheduling(profile.id)}
+                    >
+                      <div className="toggle-switch__thumb" />
+                    </div>
+                    <button
+                      className="profile-row__disconnect-btn"
+                      onClick={() => handleDisconnect(profile.id)}
+                      title="Disconnect account"
+                    >
+                      <Unlink size={14} />
+                      Disconnect
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>

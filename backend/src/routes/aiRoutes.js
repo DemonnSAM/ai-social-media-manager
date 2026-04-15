@@ -7,6 +7,7 @@ import {
   adaptForPlatformHandler,
   analyzePostHandler,
   optimizeContentHandler,
+  getDashboardInsight,
 } from '../controllers/aiController.js';
 
 const router = express.Router();
@@ -31,5 +32,8 @@ router.post('/analyze', analyzePostHandler);
 
 // POST /api/ai/optimize  — optimize caption + hashtags
 router.post('/optimize', optimizeContentHandler);
+
+// GET /api/ai/dashboard-insight  — AI performance insight for dashboard (cached 6h)
+router.get('/dashboard-insight', getDashboardInsight);
 
 export default router;
