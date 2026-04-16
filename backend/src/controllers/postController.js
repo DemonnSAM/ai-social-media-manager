@@ -1,5 +1,6 @@
 import supabaseAdmin from "../config/supabaseAdmin.js";
 import { addScheduledJob } from "../queue/postQueue.js";
+import { publishPost } from "../services/publishService.js";
 
 export const createPost = async (req, res) => {
     try {
@@ -186,3 +187,178 @@ export const deletePost = async (req, res) => {
         res.status(500).json({ error: "Internal server error" });
     }
 };
+
+export const publishNow = async (req, res) => {
+    try {
+        const { user_id, content } = req.body;
+        let { social_account_ids } = req.body;
+        const files = req.files || [];
+
+        if (!user_id) {
+            return res.status(400).json({ error: "Missing required field: user_id" });
+        }
+
+        if (social_account_ids) {
+            try {
+                social_account_ids = JSON.parse(social_account_ids);
+            } catch (e) {
+                // already an array or invalid JSON
+            }
+        } else {
+            social_account_ids = [];
+        }
+
+        if (!social_account_ids || social_account_ids.length === 0) {
+            return res.status(400).json({ error: "At least one social account is required" });
+        }
+
+        // 1. Insert post with status = 'scheduled' and scheduled_at = NOW()
+        //    - 'scheduled' is a valid posts status (passes the check constraint)
+        //    - Must NOT be 'published' — publishService guards against re-publishing
+        //    - publishService will update it to 'published' after all targets succeed
+        const { data: post, error: postError } = await supabaseAdmin
+            .from("posts")
+            .insert([{
+                user_id,
+                content: content || "",
+                status: "scheduled",
+                scheduled_at: new Date().toISOString(),
+            }])
+            .select()
+            .single();
+
+        if (postError) {
+            console.error("Error creating post (publishNow):", postError);
+            return res.status(500).json({ error: postError.message });
+        }
+
+        // 2. Upload media if present (same logic as createPost)
+        let mediaRecords = [];
+        if (files && files.length > 0) {
+            for (const file of files) {
+                const fileExt = file.originalname.split('.').pop();
+                const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+                const filePath = `${user_id}/${fileName}`;
+
+                const { error: uploadError } = await supabaseAdmin
+                    .storage
+                    .from("post-media")
+                    .upload(filePath, file.buffer, {
+                        contentType: file.mimetype,
+                        upsert: false
+                    });
+
+                if (uploadError) {
+                    console.error("Error uploading media (publishNow):", uploadError);
+                    continue;
+                }
+
+                const { data: publicUrlData } = supabaseAdmin
+                    .storage
+                    .from("post-media")
+                    .getPublicUrl(filePath);
+
+                const fileUrl = publicUrlData.publicUrl;
+
+                const { data: media, error: mediaError } = await supabaseAdmin
+                    .from("media")
+                    .insert([{
+                        post_id: post.id,
+                        url: fileUrl,
+                        type: file.mimetype.startsWith('video/') ? 'video' : 'image',
+                        storage_path: filePath
+                    }])
+                    .select()
+                    .single();
+
+                if (mediaError) {
+                    console.error("Error creating media record (publishNow):", mediaError);
+                } else {
+                    mediaRecords.push(media);
+                }
+            }
+        }
+
+        // 3. Insert post_targets for each social account
+        const { data: accountsData } = await supabaseAdmin
+            .from("social_accounts")
+            .select("id, platform")
+            .in("id", social_account_ids);
+
+        const accountMap = {};
+        if (accountsData) {
+            accountsData.forEach(acc => { accountMap[acc.id] = acc.platform; });
+        }
+
+        const targetsDataWithPlatform = social_account_ids.map(accountId => ({
+            post_id: post.id,
+            social_account_id: accountId,
+            status: 'pending',
+            platform: accountMap[accountId] || 'unknown'
+        }));
+
+        let { error: targetsError } = await supabaseAdmin
+            .from("post_targets")
+            .insert(targetsDataWithPlatform);
+
+        if (targetsError && targetsError.code === 'PGRST204') {
+            const { error: fallbackError } = await supabaseAdmin
+                .from("post_targets")
+                .insert(social_account_ids.map(accountId => ({
+                    post_id: post.id,
+                    social_account_id: accountId,
+                    status: 'pending'
+                })));
+            targetsError = fallbackError;
+        }
+
+        if (targetsError) {
+            console.error("Error creating post_targets (publishNow):", targetsError);
+            return res.status(500).json({ error: "Failed to create post targets" });
+        }
+
+        // 4. Immediately publish — no queue, no delay
+        console.log(`[publishNow] Directly publishing post ${post.id}`);
+        await publishPost(post.id);
+
+        // 5. Read final target statuses to determine response
+        const { data: finalTargets } = await supabaseAdmin
+            .from("post_targets")
+            .select("id, status, error_message, social_account_id")
+            .eq("post_id", post.id);
+
+        const failed = (finalTargets || []).filter(t => t.status === 'failed');
+        const succeeded = (finalTargets || []).filter(t => t.status === 'published');
+
+        if (failed.length === 0) {
+            return res.status(200).json({
+                success: true,
+                message: "Post published successfully",
+                post,
+            });
+        } else if (succeeded.length === 0) {
+            return res.status(200).json({
+                success: false,
+                message: "Failed to publish to all platforms",
+                errors: failed.map(t => ({
+                    social_account_id: t.social_account_id,
+                    error: t.error_message
+                })),
+            });
+        } else {
+            return res.status(200).json({
+                success: false,
+                message: "Some platforms failed",
+                errors: failed.map(t => ({
+                    social_account_id: t.social_account_id,
+                    error: t.error_message
+                })),
+            });
+        }
+
+    } catch (error) {
+        console.error("Unexpected error in publishNow:", error);
+        res.status(500).json({ error: "Internal server error" });
+    }
+};
+

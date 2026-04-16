@@ -1,5 +1,5 @@
 import { useLocation } from 'react-router-dom';
-import { Search, Plus, Bell, ChevronDown, Zap, Camera, X, Briefcase, Upload } from 'lucide-react';
+import { Search, Plus, Bell, ChevronDown, Camera, X, Briefcase, Upload } from 'lucide-react';
 import './Topbar.css';
 
 interface TopbarProps {
@@ -178,10 +178,6 @@ export default function Topbar({ actions }: TopbarProps) {
           <>
             <button className="topbar__icon-btn" id="notifications-btn" title="Notifications">
               <Bell size={18} />
-            </button>
-            <button className="topbar__insight-btn" id="ai-insights-btn">
-              <Zap size={14} />
-              <span>AI Insights</span>
             </button>
           </>
         )}

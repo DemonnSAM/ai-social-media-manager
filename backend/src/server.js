@@ -3,6 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import router from "./routes/Routes.js";
 import "./services/cronService.js"; // Starts the analytics cron job on boot
+import "./worker/publishWorker.js"; // Starts the BullMQ worker for scheduled posts
 
 // Load environment variables
 dotenv.config();

@@ -123,6 +123,8 @@ export default function Publish() {
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
   const [scheduledAt, setScheduledAt] = useState<string>(''); // ISO string from datetime-local
   const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [showPublishModal, setShowPublishModal] = useState(false);
+  const [alertConfig, setAlertConfig] = useState<{ title: string; message: string } | null>(null);
 
   // Submit state
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -454,11 +456,11 @@ export default function Publish() {
   const submitPost = useCallback(async (status: 'draft' | 'scheduled') => {
     if (!user) return;
     if (selectedAccounts.length === 0) {
-      alert('Please select at least one social account');
+      setAlertConfig({ title: 'Missing Account', message: 'Please select at least one social account before proceeding.' });
       return;
     }
     if (!content) {
-      alert('Please add some text to your post.');
+      setAlertConfig({ title: 'Empty Post', message: 'Please add some text to your post before proceeding.' });
       return;
     }
 
@@ -479,14 +481,14 @@ export default function Publish() {
 
       if (status === 'scheduled') {
         if (!scheduledAt) {
-          alert('Please pick a schedule time');
+          setAlertConfig({ title: 'Missing Schedule', message: 'Please pick a valid date and time to schedule this post.' });
           setIsSubmitting(false);
           return;
         }
 
         const selectedTime = new Date(scheduledAt).getTime();
         if (selectedTime < Date.now()) {
-          alert("Schedule time must be in the future.");
+          setAlertConfig({ title: 'Invalid Schedule', message: 'Schedule time must be in the future.' });
           setIsSubmitting(false);
           return;
         }
@@ -543,6 +545,83 @@ export default function Publish() {
     }
   }, [user, selectedAccounts, getPreviewHtml, mediaFiles, scheduledAt, navigate, editor]);
 
+  const handlePublishNowClick = useCallback(() => {
+    if (!user) return;
+    if (selectedAccounts.length === 0) {
+      setAlertConfig({ title: 'Missing Account', message: 'Please select at least one social account before proceeding.' });
+      return;
+    }
+    if (!content) {
+      setAlertConfig({ title: 'Empty Post', message: 'Please add some text to your post before proceeding.' });
+      return;
+    }
+    setShowPublishModal(true);
+  }, [user, selectedAccounts.length, content]);
+
+  const confirmPublishNow = useCallback(async () => {
+    if (!user) return;
+    setShowPublishModal(false);
+    setIsSubmitting(true);
+    try {
+      const formData = new FormData();
+      formData.append('user_id', user.id);
+      const plainText = editor ? editor.getText() : content;
+      const hashtagText = postHashtags.trim()
+        ? '\n\n' + postHashtags.split(/\s+/).map(t => t.startsWith('#') ? t : '#' + t).join(' ')
+        : '';
+      formData.append('content', plainText + hashtagText);
+      formData.append('social_account_ids', JSON.stringify(selectedAccounts.map(p => p.id)));
+      if (mediaFiles.length > 0) {
+        mediaFiles.forEach(f => formData.append('media', f));
+      }
+
+      const response = await fetch(`${API_URL}/api/posts/publish-now`, {
+        method: 'POST',
+        headers: { 'ngrok-skip-browser-warning': 'true' },
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to publish post');
+      }
+
+      if (data.success) {
+        // Clear compose area
+        editor?.commands.clearContent();
+        setContent('');
+        setPostHashtags('');
+        setMediaFiles([]);
+        setMediaPreviews([]);
+        setCurrentMediaIndex(0);
+        setScheduledAt('');
+        setToneValue(50);
+        setInsightsData(null);
+        setShowInsightsPanel(false);
+        setAdditionalContext('');
+        setOptimizeImprovements([]);
+
+        setShowToast(true);
+        setTimeout(() => {
+          setShowToast(false);
+          navigate('/');
+        }, 1500);
+      } else {
+        // Partial or full failure
+        const errorSummary = (data.errors || [])
+          .map((e: { social_account_id: string; error: string }) => `• ${e.error}`)
+          .join('\n');
+        alert(`${data.message}\n\n${errorSummary}`);
+      }
+    } catch (err: any) {
+      console.error('[publishNow]', err);
+      alert(err.message || 'An error occurred while publishing');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [user, selectedAccounts, content, editor, postHashtags, mediaFiles, navigate]);
+
   const publishActions = useMemo(() => (
     <>
       <button
@@ -560,12 +639,19 @@ export default function Publish() {
       </button>
       <button
         className="btn-ghost-filled"
-        onClick={() => alert('Live publishing coming soon! Use schedule for now.')}
+        onClick={handlePublishNowClick}
+        disabled={isSubmitting}
       >
-        Publish Now
+        {isSubmitting ? (
+          <>
+            <Loader2 size={14} className="spin" style={{ marginRight: 6 }} />
+            Publishing...
+          </>
+        ) : 'Publish Now'}
       </button>
     </>
-  ), [isSubmitting, submitPost]);
+  ), [isSubmitting, submitPost, handlePublishNowClick]);
+
 
   useEffect(() => {
     setActions(publishActions);
@@ -1398,6 +1484,68 @@ export default function Publish() {
           )}
         </div>
       </div>
+
+      {/* Validation Alert Modal */}
+      {alertConfig && (
+        <div className="schedule-modal-overlay" style={{ zIndex: 1100 }}>
+          <div className="schedule-modal">
+            <div className="schedule-modal__header">
+              <h3>{alertConfig.title}</h3>
+              <button className="btn-close" onClick={() => setAlertConfig(null)}>
+                <X size={20} />
+              </button>
+            </div>
+            <div className="schedule-modal__content" style={{ marginTop: '16px', marginBottom: '24px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <AlertCircle size={20} color="#f97316" />
+                  <span style={{ fontSize: '15px', color: '#f8fafc', fontWeight: 500, lineHeight: 1.4 }}>
+                    {alertConfig.message}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="schedule-modal__actions">
+              <button className="btn-cyan-split" onClick={() => setAlertConfig(null)}>
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Publish Now Modal */}
+      {showPublishModal && (
+        <div className="schedule-modal-overlay">
+          <div className="schedule-modal">
+            <div className="schedule-modal__header">
+              <h3>Publish Post Now</h3>
+              <button className="btn-close" onClick={() => setShowPublishModal(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            <div className="schedule-modal__content" style={{ marginTop: '16px', marginBottom: '24px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <AlertCircle size={20} color="#06b6d4" />
+                  <span style={{ fontSize: '15px', color: '#f8fafc', fontWeight: 500 }}>
+                    Publish this post immediately?
+                  </span>
+                </div>
+                <p style={{ color: '#94a3b8', fontSize: '13px', margin: 0, paddingLeft: '28px', lineHeight: 1.5 }}>
+                  Your post will be sent to <strong>{selectedAccounts.length}</strong> selected account(s). This action cannot be undone.
+                </p>
+              </div>
+            </div>
+            <div className="schedule-modal__actions">
+              <button className="btn-outline-ghost" onClick={() => setShowPublishModal(false)}>Cancel</button>
+              <button className="btn-cyan-split" onClick={confirmPublishNow} disabled={isSubmitting}>
+                {isSubmitting ? <Loader2 size={14} className="spin" /> : 'Confirm & Publish'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Schedule Modal */}
       {showScheduleModal && (
