@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Mention from '@tiptap/extension-mention';
-import EmojiPicker from 'emoji-picker-react';
+import EmojiPicker, { Theme } from 'emoji-picker-react';
 import { getSuggestionConfig } from '../../components/Editor/mentionSuggestion';
 import './tiptap.css';
 import {
@@ -802,7 +802,7 @@ export default function Publish() {
               <EditorContent editor={editor} className="editor__textarea" style={{ flex: 1, display: 'flex', flexDirection: 'column' }} />
               {showEmojiPicker && (
                 <div style={{ position: 'absolute', top: '40px', left: '10px', zIndex: 100 }}>
-                  <EmojiPicker onEmojiClick={onEmojiClick} theme="dark" />
+                  <EmojiPicker onEmojiClick={onEmojiClick} theme={Theme.DARK} />
                 </div>
               )}
             </div>
